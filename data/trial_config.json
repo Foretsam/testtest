@@ -1,0 +1,128 @@
+{
+    "Developer": {
+        "questions": [
+            {
+                "question": "Do you have any prior experience?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Do you know how to use discohook?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Tell us about what made you want to apply",
+                "placeholder": "",
+                "type": "Paragraph"
+            }
+        ],
+        "prefix": "Dev",
+        "application": "True"
+    },
+    "Server Recruiter": {
+        "questions": [
+            {
+                "question": "Do you have any prior experience as staff?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "How active daily on Discord are you?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "What made you want to be staff here?",
+                "placeholder": "",
+                "type": "Paragraph"
+            }
+        ],
+        "prefix": "SR",
+        "application": "True"
+    },
+    "Champions Tester": {
+        "questions": [
+            {
+                "question": "What was your last month cwl league?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "How many stars did you get?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "What time of the day are you available?",
+                "placeholder": "",
+                "type": "Paragraph"
+            }
+        ],
+        "prefix": "CTEST",
+        "application": "True"
+    },
+    "Coach": {
+        "questions": [
+            {
+                "question": "What's your Town Hall level ?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Do you have any experience in this?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "What made you want to apply for this?",
+                "placeholder": "",
+                "type": "Paragraph"
+            }
+        ],
+        "prefix": "COACH",
+        "application": "False"
+    },
+    "Moderator": {
+        "questions": [
+            {
+                "question": "How active are you daily on discord?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Do you have any prior exp being a mod?",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Why do you want to be staff in AFO?",
+                "placeholder": "",
+                "type": "Paragraph"
+            }
+        ],
+        "prefix": "MOD",
+        "application": "False"
+    },
+    "Other": {
+        "questions": [
+            {
+                "question": "Default Question 1",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Default Question 2",
+                "placeholder": "",
+                "type": "Paragraph"
+            },
+            {
+                "question": "Default Question 3",
+                "placeholder": "",
+                "type": "Paragraph"
+            }
+        ],
+        "prefix": "OTHR",
+        "application": "False"
+    }
+}

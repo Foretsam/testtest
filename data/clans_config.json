@@ -1,0 +1,301 @@
+{
+    "#2RRPPQGQL": {
+        "leader": 1357673493931495535,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> CWL Clan for Dev Demonic|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> No questions||||",
+        "name": "Demonical",
+        "prefix": "DCL",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1393003448949276682,
+        "announcement": null,
+        "checks": {}
+    },
+    "#2YUR0GCVG": {
+        "leader": 1357673493931495535,
+        "emoji": "DD",
+        "msg": "- <a:Diamond:1318282975061741679> Competitive yet Casual|- <a:Diamond:1318282975061741679> Active 24x7|- <a:Diamond:1318282975061741679> Non - Stop Perfect Wars",
+        "questions": "<a:arrowright:1347658137909329990> How often do you triple an equivalent townhall (in war/CWL)?|<a:arrowright:1347658137909329990> What attack strategies do you use?|<a:arrowright:1347658137909329990> Are you active in chat and respond to Discord/in game pings?|<a:arrowright:1347658137909329990> Why did u leave your previous clan (wherever you have been for more than a month)?|<a:arrowright:1347658137909329990> What are your expectations from us? And what do you bring to the table?",
+        "name": "Dev Demonic",
+        "prefix": "DevD",
+        "requirement": "TH15+",
+        "role": 1363541088299647107,
+        "gk_role": 1363541167647490299,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1363541989043339354,
+        "announcement": 1363541935276425468,
+        "checks": {
+            "hero_max": {
+                "min_value": 69
+            }
+        }
+    },
+    "#20RY98U9": {
+        "leader": 280396698654736404,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> CWL Clan for Reckoned Rebel|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> No questions",
+        "name": "RECKONING!!!",
+        "prefix": "RK",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1382731870781046784,
+        "announcement": null,
+        "checks": {}
+    },
+    "#2Q288YJLU": {
+        "leader": 304771322960150529,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> .",
+        "name": "dirtkids",
+        "prefix": "DK",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1395963306799267890,
+        "announcement": 1395963210393190481,
+        "checks": {}
+    },
+    "#2P0YQ2880": {
+        "leader": 329320616257781760,
+        "emoji": "DB",
+        "msg": "- <a:Diamond:1318282975061741679> Active Daily with constant Daily Wars|- <a:Diamond:1318282975061741679> Max Clan Games|- <a:Diamond:1318282975061741679> Weekly Raids with raid medal focus",
+        "questions": "1. Are you responsive to in-game pings and discord messages?|2. Where are you from?|3. What CWL league did you play last month and how did you perform?|4. When are you available for a trial run 3 (expert difficulty) bases?|5. What is your clan capital attack strategy like?",
+        "name": "dirtboys",
+        "prefix": "DB",
+        "requirement": "TH17+",
+        "role": 1395958371777118308,
+        "gk_role": 1395958246832996362,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1395963306799267890,
+        "announcement": 1395963210393190481,
+        "checks": {
+            "hero_max": {
+                "min_value": 75
+            }
+        }
+    },
+    "#U80C8RCP": {
+        "leader": 324018900587118592,
+        "emoji": "KE",
+        "msg": "- <a:Diamond:1318282975061741679> 1600 weekly raid medals|- <a:Diamond:1318282975061741679> Champs CWL with pro bases.|- <a:Diamond:1318282975061741679> All CWL levels for lower TH players",
+        "questions": "1) How much time do you play clash daily?|2) How many competitive attack strategies can you use for your current Town Hall level, and which one are you most confident with?|3) What strategies do you use for clan capital raid attacks, and what is your average score?|4) We do fc trials, what's your preferred time for doing it? (only TH16+ need to answer this)|",
+        "name": "King's Empire",
+        "prefix": "KE",
+        "requirement": "TH15+",
+        "role": 1287445480778764399,
+        "gk_role": 1287445227656839240,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1287448958888710164,
+        "announcement": 1287459937445871658,
+        "checks": {
+            "hero_sum": {
+                "min_value": 270
+            },
+            "hero_max": {
+                "min_value": 75
+            }
+        }
+    },
+    "#2P8LCY8GP": {
+        "leader": 280396698654736404,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> CWL Clan for Reckoned Rebel|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> No questions",
+        "name": "Reckoned Runts",
+        "prefix": "RRU",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1382731870781046784,
+        "announcement": null,
+        "checks": {}
+    },
+    "#2JJY9YYJ2": {
+        "leader": 760006944643219487,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> CWL Clan for AFO|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> No questions",
+        "name": "SapoyII",
+        "prefix": "SPY2",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1461703130491387926,
+        "announcement": null,
+        "checks": {}
+    },
+    "#2GLRCVL9J": {
+        "leader": 740075887348940840,
+        "emoji": "KG",
+        "msg": "- <a:Diamond:1318282975061741679> Competitive streak wars|- <a:Diamond:1318282975061741679> Searching for th15+ unrushed|- <a:Diamond:1318282975061741679> Friendly people",
+        "questions": "1. List attack strategies you use in war (atleast 2)|2. Why did u leave your old clan?|3. What cwl league did u play in last month and how did you perform?|4. Are you responsive to in game pins and messages?|5. Where are you from?",
+        "name": "King Gambit",
+        "prefix": "KG",
+        "requirement": "TH15+",
+        "role": 1466536911802863761,
+        "gk_role": 1466537280071270674,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1466530322677235816,
+        "announcement": 1466529837459177607,
+        "checks": {}
+    },
+    "#2QVGPQP0U": {
+        "leader": 1310076319396007946,
+        "emoji": "EB",
+        "msg": "- <a:Diamond:1318282975061741679> Casual|- <a:Diamond:1318282975061741679> Feeder clan for Sapoy|- <a:Diamond:1318282975061741679> B2B Wars (2 heroes down allowed)",
+        "questions": "- Why did you leave your old clan?|- How active are you daily, also do you use discord for communication?|- What is your main army?|- Will you participate in all clan events? (raids, clan games etc?)|- What do you expect from us? Note: only th15+ get accepted in Sapoy lower ths go to eternal blaze",
+        "name": "Eternal Blaze",
+        "prefix": "EB",
+        "requirement": "TH13+",
+        "maximum_possibleTH": "TH14",
+        "role": 1463169754687733945,
+        "gk_role": 1463170551760556053,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1461703130491387926,
+        "announcement": 1461703023502950573,
+        "checks": {
+            "hero_sum": {
+                "min_value": 250
+            }
+        }
+    },
+    "#2JUPUYPPG": {
+        "leader": 324018900587118592,
+        "emoji": "QE",
+        "msg": "- <a:Diamond:1318282975061741679> 1900+ weekly raid medals|- <a:Diamond:1318282975061741679> Several champs and master clans for cwl.|- <a:Diamond:1318282975061741679> War streak focus.",
+        "questions": "1) How much time do you play clash daily?|2) How many competitive attack strategies can you use for your current Town Hall level, and which one are you most confident with?|3) What strategies do you use for clan capital raid attacks, and what is your average score?|4) We do fc trials, what's your preferred time for doing it? (only TH16+ need to answer this)|",
+        "name": "Queen's Empire",
+        "prefix": "QE",
+        "requirement": "TH14+",
+        "role": 1384535332120428614,
+        "gk_role": 1287445227656839240,
+        "type": "Competitive",
+        "recruitment": false,
+        "chat": 1287448958888710164,
+        "announcement": 1287459937445871658,
+        "checks": {
+            "hero_sum": {
+                "min_value": 270
+            },
+            "hero_max": {
+                "min_value": 75
+            }
+        }
+    },
+    "#2PVLYQU8P": {
+        "leader": 280396698654736404,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> CWL Clan for Reckoned Rebel|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> No questions",
+        "name": "Wreckned Rebel",
+        "prefix": "WR",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1382731870781046784,
+        "announcement": null,
+        "checks": {}
+    },
+    "#2RGJVVJU": {
+        "leader": 280396698654736404,
+        "emoji": "RR",
+        "msg": "- <a:Diamond:1318282975061741679> Trial required before application approval|- <a:Diamond:1318282975061741679> Ore wars during cwl|- <a:Diamond:1318282975061741679> Competitive - Casual Clan",
+        "questions": "1. List attack strategies you use in war (atleast 2)|2. Are you open to being taught new attack strategies in order to become a better player?|3. Are you responsive to in-game pings and discord messages?|4. Where are you from?|5. What CWL league did you play last month and how did you perform?",
+        "name": "Reckoned Rebel",
+        "prefix": "RR",
+        "requirement": "TH17+",
+        "role": 1288361892993306667,
+        "gk_role": 1288361737283960854,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1288375459045838848,
+        "announcement": 1288375439642853420,
+        "checks": {
+            "hero_max": {
+                "min_value": 80
+            }
+        }
+    },
+    "#22JUGPVY9": {
+        "leader": 881891529793355788,
+        "emoji": "NGU",
+        "msg": "- <a:Diamond:1318282975061741679> Regular clan wars and donations|- <a:Diamond:1318282975061741679> Max Clan Games and Capital|- <a:Diamond:1318282975061741679> Social and competitive atmosphere",
+        "questions": "1. What attack strategies do you use ?|2. How often are you online?|3. Are you willing to learn more attack strategies?|4. Do you prefer to strategically rush or max everything out (townhall 16 and below question)?|",
+        "name": "Never Give Up",
+        "prefix": "NGU",
+        "requirement": "TH16+",
+        "maximum_possibleTH": "TH14",
+        "role": 1396140995237642340,
+        "gk_role": 1396141198477103217,
+        "type": "Competitive",
+        "recruitment": false,
+        "chat": 1396144984843096225,
+        "announcement": 1396145025561268275,
+        "checks": {
+            "hero_max": {
+                "min_value": 75
+            }
+        }
+    },
+    "#VGCRUR8Q": {
+        "leader": 760006944643219487,
+        "emoji": "SPY",
+        "msg": "- <a:Diamond:1318282975061741679> Casual Competitive|- <a:Diamond:1318282975061741679> Searching for th15+|- <a:Diamond:1318282975061741679> Friendly people",
+        "questions": "\u27a1\ufe0f Why did you leave your old clan?|\u27a1\ufe0f How active are you daily, also do you use discord for communication?|\u27a1\ufe0f What is your main army?|\u27a1\ufe0f Will you participate in all clan events? (raids, clan games etc?)|\u27a1\ufe0f Note: only th15+ get accepted in Sapoy lower ths go to eternal blaze",
+        "name": "Sapoy",
+        "prefix": "SPY",
+        "requirement": "TH15+",
+        "role": 1461703678942773288,
+        "gk_role": 1461703738380259359,
+        "type": "Competitive",
+        "recruitment": true,
+        "chat": 1461703130491387926,
+        "announcement": 1461703023502950573,
+        "checks": {
+            "hero_sum": {
+                "min_value": 350
+            },
+            "hero_max": {
+                "min_value": 85
+            }
+        }
+    },
+    "#2RRV2VRUR": {
+        "leader": 280396698654736404,
+        "emoji": "FreshStar",
+        "msg": "- <a:Diamond:1318282975061741679> CWL Clan for Reckoned Rebel|- <a:Diamond:1318282975061741679> .|- <a:Diamond:1318282975061741679> .",
+        "questions": "<a:arrowright:1350516497079861298> No questions",
+        "name": "Reckoned Rivals",
+        "prefix": "RRI",
+        "requirement": "TH11+",
+        "role": 1383921628563509248,
+        "gk_role": 1383921628563509248,
+        "type": "CWL",
+        "recruitment": false,
+        "chat": 1382731870781046784,
+        "announcement": null,
+        "checks": {}
+    }
+}
