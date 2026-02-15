@@ -1,45 +1,67 @@
+"""
+Emoji Management System.
+
+This module provides a centralized service for managing and retrieving custom emojis 
+used throughout the bot. It maintains a global dictionary `emoji_cache` to store 
+emoji strings (formatted as `<:name:id>`) for quick access.
+
+Key Features:
+1.  **Global Cache:** Stores all application emojis in memory to prevent repeated API calls.
+2.  **Dynamic Fetching:** Can fetch emojis from the bot's application context on demand.
+3.  **Fallback Mechanism:** Provides a default string if a requested emoji is missing, 
+    preventing `KeyError` crashes in UI components.
+
+Dependencies:
+    - interactions (Discord interactions)
+"""
+
 import interactions as ipy
 
-emojis_cache = {}
+# Global storage for emoji strings
+emoji_cache = {}
 
-async def fetch_emojis(bot: ipy.Client, get_type: int = 1, update: bool = False):
+async def fetch_emojis(bot: ipy.Client, update: bool = False) -> dict:
     """
-    Fetches Application Emojis (Developer Portal) and caches them.
-    
-    get_type 0: Returns {name: id} (int)
-    get_type 1: Returns {name: "<:name:id>"} (str) - DEFAULT
-    get_type 2: Returns {name: EmojiObject} (full object)
+    Retrieves all custom emojis available to the bot application.
+
+    This function populates the `emoji_cache` dictionary. It acts as a singleton-like
+    accessor, only hitting the API if the cache is empty or if a forced update is requested.
+
+    Args:
+        bot (ipy.Client): The main bot instance used to fetch application emojis.
+        update (bool): If True, forces a refresh of the cache from the Discord API.
+
+    Returns:
+        dict: A dictionary mapping emoji names to their Discord string representation.
     """
-    cache_key = "APP_EMOJIS"
+    global emoji_cache
 
-    # Return cached version if we have it and aren't forcing an update
-    # Note: We cache the full object list effectively, but for simplicity 
-    # in this transition, we will rebuild the dict format requested.
-    if not update and cache_key in emojis_cache:
-        cached_data = emojis_cache[cache_key]
-        # If the cache is already in the format we want, return it.
-        # Otherwise, we proceed to re-fetch/re-format.
-        return cached_data
+    # Return existing cache if populated and no update requested
+    if emoji_cache and not update:
+        return emoji_cache
 
-    # Fetch emojis directly from the application (Developer Portal)
-    app_emojis = await bot.fetch_application_emojis()
+    # Fetch fresh list of emojis from the application
+    application_emojis = await bot.fetch_application_emojis()
     
-    formatted_emojis = {}
-    for emoji in app_emojis:
-        if get_type == 0:
-            formatted_emojis[emoji.name] = int(emoji.id)
-        elif get_type == 1:
-            # We store the formatted string so it's ready to use in f-strings
-            formatted_emojis[emoji.name] = str(emoji) 
-        elif get_type == 2:
-            formatted_emojis[emoji.name] = emoji
+    # Update cache with formatted strings: <:Name:ID> or <a:Name:ID> (animated logic handled by library str())
+    for emoji in application_emojis:
+        emoji_cache[emoji.name] = str(emoji)
 
-    # Update the cache
-    emojis_cache[cache_key] = formatted_emojis
-    return formatted_emojis
+    return emoji_cache
 
-# Add this helper function to make using them easier in your commands
-def get_app_emoji(name: str):
-    """Safely gets an app emoji, returns the name as text if not found"""
-    # This helper assumes the cache is stored as Type 1 (formatted strings)
-    return emojis_cache.get("APP_EMOJIS", {}).get(name, f":{name}:")
+
+def get_app_emoji(emoji_name: str) -> str:
+    """
+    Safe accessor for retrieving an emoji string from the cache.
+
+    Args:
+        emoji_name (str): The name of the emoji to retrieve.
+
+    Returns:
+        str: The formatted emoji string if found, otherwise a fallback string ("emoji_name").
+             This ensures that missing emojis don't break message formatting, just visual style.
+    """
+    global emoji_cache
+    
+    # Return the cached emoji or fall back to the plain text name
+    return emoji_cache.get(emoji_name, emoji_name)

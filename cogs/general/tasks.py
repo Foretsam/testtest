@@ -1,23 +1,52 @@
+"""
+Background Tasks & Automation Module.
+
+This extension manages scheduled asynchronous tasks that run independently of user interaction.
+It acts as the bot's internal clock and maintenance crew.
+
+Key Responsibilities:
+1.  **Data Hygiene (Garbage Collection):** Periodically scans local JSON databases (`packages.json`, `ticket_data.json`)
+    and removes entries linked to deleted or inaccessible channels to prevent data bloat.
+2.  **Event Scheduling:** Automates time-sensitive workflows such as:
+    - Notifying users when Clan War Leagues (CWL) end (on the 10th of the month).
+    - Automatically starting and ending staff trials based on configured durations.
+3.  **Cache Management:** Refreshes and clears the internal player data cache to ensure
+    up-to-date information while managing memory usage.
+
+Dependencies:
+    - interactions (Task scheduling triggers)
+    - coc (Clash of Clans API for player updates)
+    - core (Utilities and models)
+"""
+
 import interactions as ipy
 import json
 import copy
+import os
 import coc
 from datetime import datetime, timezone, timedelta
 
-# Imports from your core modules
+# Explicit imports to maintain code clarity
 from core.utils import *
 from core.models import *
 from core.emojis_manager import *
 import core.server_setup as sc
 
 class Tasks(ipy.Extension):
-    def __init__(self, bot):
+    """
+    Extension class containing all background tasks and their scheduling logic.
+    """
+
+    def __init__(self, bot: ipy.Client):
         self.bot = bot
 
     @ipy.listen(ipy.events.Startup)
     async def on_startup(self):
         """
-        Starts the tasks when the bot is ready. 
+        Event listener triggered when the bot is fully ready.
+        
+        Initializes and starts all background tasks. This ensures tasks rely on
+        a connected bot instance and don't start prematurely.
         """
         self.cleanup_data_files.start()
         self.cwl_end.start()
@@ -29,9 +58,10 @@ class Tasks(ipy.Extension):
     @ipy.Task.create(ipy.IntervalTrigger(hours=24))
     async def cleanup_data_files(self):
         """
-        Daily Garbage Collection:
-        Checks packages.json and ticket_data.json for entries linked to 
-        channels that no longer exist and removes them.
+        Daily Garbage Collection Task.
+        
+        Runs every 24 hours to ensure database integrity. It orchestrates the cleanup
+        of multiple JSON files, removing records that point to non-existent Discord entities.
         """
         print("🧹 Starting daily data cleanup...")
         await self.clean_packages_json()
@@ -39,6 +69,12 @@ class Tasks(ipy.Extension):
         print("✅ Daily data cleanup complete.")
 
     async def clean_packages_json(self):
+        """
+        Helper method to clean 'packages.json'.
+        
+        Iterates through all application packages. If the associated channel cannot
+        be fetched (404 NotFound or 403 Forbidden), the package is deemed stale and deleted.
+        """
         if not os.path.exists("data/packages.json"):
             return
 
@@ -48,6 +84,7 @@ class Tasks(ipy.Extension):
             
             tokens_to_delete = []
             
+            # Identify stale entries
             for token, data in packages.items():
                 channel_id = data.get("channel_id")
                 
@@ -55,14 +92,17 @@ class Tasks(ipy.Extension):
                     continue
 
                 try:
+                    # force=True bypasses cache to verify actual existence on Discord
                     await self.bot.fetch_channel(channel_id, force=True)
                 
                 except (ipy.errors.NotFound, ipy.errors.Forbidden):
+                    # Channel is gone or bot lost access; mark for deletion
                     tokens_to_delete.append(token)
                 except Exception as e:
                     print(f"⚠ Error checking channel {channel_id}: {e}")
                     continue
 
+            # Perform deletion
             if tokens_to_delete:
                 for token in tokens_to_delete:
                     del packages[token]
@@ -75,6 +115,12 @@ class Tasks(ipy.Extension):
             print("⚠ packages.json is corrupted.")
 
     async def clean_ticket_data_json(self):
+        """
+        Helper method to clean 'ticket_data.json'.
+        
+        Similar logic to packages cleanup, ensuring ticket metadata is removed
+        if the ticket channel no longer exists.
+        """
         if not os.path.exists("data/ticket_data.json"):
             return
 
@@ -86,6 +132,7 @@ class Tasks(ipy.Extension):
 
             for key in ticket_data.keys():
                 try:
+                    # Key format assumed to contain channel_id as the first element
                     channel_id_str = key.split("|")[0]
                     channel_id = int(channel_id_str)
                     
@@ -108,7 +155,16 @@ class Tasks(ipy.Extension):
 
     @ipy.Task.create(ipy.TimeTrigger(hour=8))
     async def cwl_end(self):
+        """
+        Clan War Leagues (CWL) End Notification.
+        
+        Runs daily at 8:00 AM. Checks if today is the 10th of the month (standard CWL end date).
+        If so, scans specific 'After CWL' ticket categories and pings the ticket owners
+        to resume their application process.
+        """
         now = datetime.now(timezone.utc)
+        
+        # CWL typically ends on the 10th-11th depending on timezone/start time
         if now.day != 10:
             return
         
@@ -126,18 +182,22 @@ class Tasks(ipy.Extension):
             except ipy.errors.HTTPException:
                 continue
 
+            # Process each ticket in the "Hold" category
             for channel in category.channels:
                 try:
+                    # Optimization: Skip if the channel was already active today
                     msg = await channel.fetch_message(channel.last_message_id)
                     last_msg_date = datetime.fromtimestamp(msg.created_at.timestamp(), tz=timezone.utc)
                     if last_msg_date.day == now.day:
                         continue
 
+                    # Identify the ticket owner to ping them
                     member = None
                     for overwrite in channel.permission_overwrites:
                         if overwrite.type == ipy.OverwriteType.MEMBER:
                             try:
                                 fetched_member = await channel.guild.fetch_member(overwrite.id)
+                                # Validation via Topic ID or Channel Name
                                 if int(fetched_member.id) == extract_integer(channel.topic):
                                     member = fetched_member
                                     break
@@ -150,6 +210,7 @@ class Tasks(ipy.Extension):
                     if not member:
                         continue
 
+                    # Notify the user
                     await channel.send(
                         f"{member.mention}\n\n"
                         f"{get_app_emoji('Giveaway')} "
@@ -161,6 +222,13 @@ class Tasks(ipy.Extension):
 
     @ipy.Task.create(ipy.IntervalTrigger(minutes=1))
     async def auto_trials(self):
+        """
+        Automated Staff Trial Management.
+        
+        Runs every minute to check `trial_events.json`.
+        - If a 'start' event time is reached: Calculates end time, moves channel, and pins start message.
+        - If an 'end' event time is reached: Posts the voting panel and removes the event.
+        """
         try:
             with open("data/trial_events.json", "r") as f:
                 trial_events = json.load(f)
@@ -172,12 +240,15 @@ class Tasks(ipy.Extension):
 
         now = datetime.now(timezone.utc)
 
+        # Iterate over a deepcopy to allow modification of the dictionary during iteration
         for key, value in copy.deepcopy(trial_events).items():
+            # Parse stored date list [YYYY, MM, DD, HH, MM] into datetime object
             target_date = datetime(
                 value["date"][0], value["date"][1], value["date"][2],
                 value["date"][3], value["date"][4], tzinfo=timezone.utc
             )
 
+            # Wait until the target time is reached
             if target_date > now:
                 continue
 
@@ -186,6 +257,7 @@ class Tasks(ipy.Extension):
                 channel = await self.bot.fetch_channel(channel_id, force=True)
                 user = await self.bot.fetch_user(member_id, force=True)
             except ipy.errors.HTTPException:
+                # Cleanup if channel/user is gone
                 del trial_events[key]
                 continue
 
@@ -193,6 +265,7 @@ class Tasks(ipy.Extension):
                 del trial_events[key]
                 continue
 
+            # Handle Trial End
             if value["action"] == "end":
                 vote_button = ipy.Button(
                     style=ipy.ButtonStyle.SECONDARY,
@@ -216,10 +289,13 @@ class Tasks(ipy.Extension):
                 await channel.send(f"{user.mention} We will inform you about your trial result soon!", embed=embed,
                                    components=vote_button)
 
+            # Handle Trial Start (Transition from Pending to Active)
             if value["action"] == "start":
+                # Calculate future end date based on configured duration ("days")
                 end_date = datetime.now(timezone.utc) + timedelta(days=value["days"])
                 end = f"<t:{int(end_date.timestamp())}:D>"
 
+                # Update event to now track the END of the trial
                 trial_events[key] = {
                     "date": [end_date.year, end_date.month, end_date.day, end_date.hour, end_date.minute],
                     "action": "end",
@@ -240,6 +316,7 @@ class Tasks(ipy.Extension):
                 )
                 await (await channel.send(user.mention, embed=embed)).pin()
 
+                # Move channel to the Active Trials category
                 if parent_id:
                     await channel.edit(parent_id=parent_id, topic=f"Applicant ID: {user.id}\nEnds on {end}")
 
@@ -248,6 +325,13 @@ class Tasks(ipy.Extension):
 
     @ipy.Task.create(ipy.IntervalTrigger(hours=3))
     async def update_player_cache(self):
+        """
+        Scheduled Cache Refresh.
+        
+        Updates the data of cached players every 3 hours. This ensures that
+        frequently accessed player profiles have relatively fresh data without
+        spamming the API on every request.
+        """
         # We iterate over a copy of keys to avoid runtime modification errors
         for key in copy.deepcopy(list(player_cache.keys())):
             try:
@@ -255,11 +339,21 @@ class Tasks(ipy.Extension):
             except InvalidTagError:
                 del player_cache[key]
             except coc.errors.Maintenance:
+                # Skip updates if API is in maintenance
                 pass
 
     @ipy.Task.create(ipy.IntervalTrigger(days=2))
     async def clear_player_cache(self):
+        """
+        Cache Reset Task.
+        
+        Completely clears the player cache every 48 hours to free up memory
+        and remove data for players who are no longer being queried.
+        """
         player_cache.clear()
 
-def setup(bot):
+def setup(bot: ipy.Client):
+    """
+    Entry point for loading the extension.
+    """
     Tasks(bot)

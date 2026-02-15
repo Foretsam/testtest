@@ -1,3 +1,22 @@
+"""
+FWA (Farm War Alliance) Application Module.
+
+This extension manages the application workflow specifically for FWA clans.
+Unlike competitive clans, FWA applications require strict validation of the player's
+base layout to ensure it meets the alliance's farming specifications.
+
+Key Features:
+1. Multi-account support (User can apply with up to 2 accounts at once).
+2. Mandatory image upload/link handling for FWA base proof.
+3. Automated eligibility checks against the minimum Town Hall requirements of FWA clans.
+4. Alerts the FWA Representative role upon successful submission.
+
+Dependencies:
+    - interactions (Discord interactions)
+    - validators (URL validation for image links)
+    - core (Internal utilities, models, configuration)
+"""
+
 import interactions as ipy
 from datetime import datetime
 import asyncio
@@ -7,34 +26,66 @@ import json
 import copy
 import coc
 
+# Explicit imports for cleaner namespace management
 from core.models import *
 from core.utils import *
-from core.models import *
+# Note: core.models was imported twice in the original; kept one.
 from core import server_setup as sc
 
 class FwaApplication(ipy.Extension):
-    def __init__(self, bot):
-        self.bot: ipy.Client = bot
+    """
+    Manages the interactive components and logic for the FWA Clan Application system.
+    """
+
+    def __init__(self, bot: ipy.Client):
+        """
+        Initialize the extension.
+
+        Args:
+            bot (ipy.Client): The main bot instance.
+        """
+        self.bot = bot
 
     @ipy.component_callback("fwa_start_button")
     async def apply_fwa(self, ctx: ipy.ComponentContext):
+        """
+        Callback for the 'Start FWA Application' button.
+
+        Initiates a multi-step interview process:
+        1. Verify applicant identity.
+        2. Ask for the number of accounts (1 or 2).
+        3. For each account:
+           a. Get Player Tag (via chat or linked account selection).
+           b. Get FWA Base Screenshot (via attachment or URL).
+        4. Validate eligibility (Min Town Hall).
+        5. Submit summary to FWA Representatives.
+
+        Args:
+            ctx (ipy.ComponentContext): The context of the button interaction.
+        """
         member = ctx.author
 
+        # Identity Verification:
+        # Ensure that the user clicking the button is the owner of the ticket.
         if extract_integer(ctx.channel.topic) != int(member.id) and \
                 extract_alphabets(member.username) != ctx.channel.name.split("┃")[1]:
             await ctx.send(f"{get_app_emoji('error')} Only the applicant of this channel can start the interview!",
                            ephemeral=True)
             return
 
+        # Defer interaction to prevent timeout
         await ctx.defer(ephemeral=True)
       
+        # --- Internal Helper Functions ---
         async def check(event: ipy.events.Component):
+            """Ensure only the applicant interacts with the components."""
             if int(event.ctx.author.id) == int(ctx.author.id):
                 return True
             await event.ctx.send(f"{get_app_emoji('error')} You cannot interact with other user's components.", ephemeral=True)
             return False
 
         async def msg_check(event: ipy.events.MessageCreate):
+            """Ensure messages come from the applicant in the correct channel."""
             if not event.message.channel.id or not event.message.author.id:
                 return False
             if int(event.message.author.id) == int(ctx.author.id) and \
@@ -42,6 +93,7 @@ class FwaApplication(ipy.Extension):
                 return True
             return False
 
+        # --- Step 1: Account Quantity Selection ---
         acc_images = {}
         account_tags = []
         jump_url = ctx.message.jump_url if ctx.message else ""
@@ -68,6 +120,7 @@ class FwaApplication(ipy.Extension):
 
         msg = await ctx.channel.send(embeds=[embed], components=account_select)
 
+        # Wait for user to select the number of accounts
         while True:
             try:
                 res: ipy.ComponentContext = (await self.bot.wait_for_component(
@@ -76,6 +129,7 @@ class FwaApplication(ipy.Extension):
                 raise ComponentTimeoutError(message=msg)
             break
 
+        # Lock the selection UI
         account_select = ipy.StringSelectMenu(
             *account_options,
             placeholder=f"✅ {res.values[0]} account(s) is/are selected",
@@ -84,12 +138,14 @@ class FwaApplication(ipy.Extension):
         )
         await res.edit_origin(components=[account_select])
 
+        # --- Pre-fetch Linked Accounts for Convenience ---
         player_links = json.load(open("data/member_tags.json", "r"))
         player_select = None
         d_player_select = None
         player = None
         player_options = {}
         
+        # Check if user has linked accounts and validate them against API
         for tag in copy.deepcopy(player_links.get(str(ctx.author.id), [])):
             try:
                 player = await fetch_player(self.bot.coc, tag)
@@ -114,7 +170,10 @@ class FwaApplication(ipy.Extension):
             )
             d_player_select = copy.deepcopy(player_select)
 
+        # --- Step 2: Iterate through each account (1 or 2 times) ---
         for i in range(1, int(res.values[0]) + 1):
+            
+            # --- 2a. Request Player Tag ---
             embed = ipy.Embed(
                 title=f"**Can you kindly provide the tag of your {NUMBER_DICT[i]} account?**",
                 description=f"- Post the tag of your Clash of Clans account in the chat.\n"
@@ -161,6 +220,7 @@ class FwaApplication(ipy.Extension):
                     raise ComponentTimeoutError(message=msg)
 
                 if action_name == "message":
+                    # Handle manual tag entry via chat
                     valid_tags = await extract_tags(self.bot.coc, action_result.message.content)
                     if not valid_tags:
                         if fails == 3:
@@ -183,11 +243,13 @@ class FwaApplication(ipy.Extension):
                         await msg.edit(components=d_player_select)
 
                 else:
+                    # Handle tag selection via dropdown
                     player = await fetch_player(self.bot.coc, action_result.ctx.values[0])
                     d_player_select.disabled = True
                     d_player_select.placeholder = f"✅ {player.name} ({player.tag}) is selected"
                     await action_result.ctx.edit_origin(components=d_player_select)
 
+                # Store the valid tag and link it if new
                 account_tags.append(player.tag)
                 player_links = json.load(open("data/member_tags.json", "r"))
                 player_links_reversed = reverse_dict(player_links)
@@ -196,6 +258,7 @@ class FwaApplication(ipy.Extension):
                     player_links.setdefault(str(ctx.author.id), []).append(player.tag)
                 break
 
+            # --- 2b. Request FWA Base Screenshot ---
             embed = ipy.Embed(
                 title=f"**Can you kindly send a screenshot of the FWA base of your {NUMBER_DICT[i]} account?**",
                 description=f"- Please upload the screenshot as an attachment or send it as image URL.\n"
@@ -207,6 +270,7 @@ class FwaApplication(ipy.Extension):
                 color=COLOR
             )
 
+            # Button to help users find FWA base layouts
             base_button = ipy.Button(
                 style=ipy.ButtonStyle.LINK,
                 label="Get FWA Base",
@@ -225,10 +289,12 @@ class FwaApplication(ipy.Extension):
                 except asyncio.TimeoutError:
                     raise ComponentTimeoutError(message=msg)
 
+                # Check for direct file attachment
                 if res.message.attachments:
                     acc_images[player.tag] = res.message.attachments[0].url
                     break
 
+                # Check for image URL in text
                 if not validators.url(res.message.content) or not await is_url_image(res.message.content):
                     if fails == 3:
                         await msg.edit(embed=FAIL_EMBED, components=FWA_RESTART_BUTTON)
@@ -246,6 +312,7 @@ class FwaApplication(ipy.Extension):
                 acc_images[player.tag] = res.message.content
                 break
 
+        # --- Step 3: Finalize and Save Data ---
         with open("data/member_tags.json", "w") as file:
             json.dump(player_links, file, indent=4)
 
@@ -257,6 +324,7 @@ class FwaApplication(ipy.Extension):
         with open("data/packages.json", "w") as file:
             json.dump(packages, file, indent=4)
 
+        # --- Step 4: Eligibility Check and Summary Generation ---
         embed = ipy.Embed(
             title=f"**Application Summary**",
             description=f"**User Tag:** {ctx.author.username}\n"
@@ -271,6 +339,7 @@ class FwaApplication(ipy.Extension):
             color=COLOR
         )
 
+        # Determine Minimum FWA Town Hall Requirement from config
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
         fwa_reqs = []
         for value in clans_config.values():
@@ -283,6 +352,8 @@ class FwaApplication(ipy.Extension):
         account_tags = list(set(account_tags))
         player_options = []
         player_summary = ""
+        
+        # Filter eligible accounts and build summary
         for account_tag in account_tags:
             player = await fetch_player(self.bot.coc, account_tag)
 
@@ -306,13 +377,15 @@ class FwaApplication(ipy.Extension):
             )
             player_options.append(player_option)
 
-        embed.add_field(
-            name=f"Applicant Accounts",
-            value=player_summary,
-            inline=False
-        )
-
-        if not player_summary:
+        # If eligible accounts exist, add them to the summary
+        if player_summary:
+            embed.add_field(
+                name=f"Applicant Accounts",
+                value=player_summary,
+                inline=False
+            )
+        else:
+            # If no accounts meet the TH requirement, deny the application immediately
             embed = ipy.Embed(
                 title=f"**Application Denied**",
                 description=f"{get_app_emoji('error')} We are sorry that you are **not eligible** for FWA clans. The "
@@ -323,13 +396,10 @@ class FwaApplication(ipy.Extension):
                 timestamp=ipy.Timestamp.utcnow(),
                 color=COLOR
             )
-            # ... (Rest of rejection logic omitted for brevity as it handles clan selection similar to comp_clan) ...
-            # IMPORTANT: The provided snippet was cut off in the rejection logic in the original upload if it was fully provided.
-            # Assuming standard behavior, we just ensure config is used for roles.
             await ctx.channel.send(embed=embed)
             return
 
-        # Use dynamic config for FWA Rep role
+        # Use dynamic config for FWA Rep role notification
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
         
         await ctx.channel.send(LINE_URL)
@@ -342,5 +412,8 @@ class FwaApplication(ipy.Extension):
         except ipy.errors.HTTPException:
             pass
 
-def setup(bot):
+def setup(bot: ipy.Client):
+    """
+    Entry point for loading the extension.
+    """
     FwaApplication(bot)

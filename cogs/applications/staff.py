@@ -1,3 +1,23 @@
+"""
+Staff Application & Management Module.
+
+This extension manages the recruitment and trial process for server staff.
+It provides two main classes:
+1. StaffApplication: Handles the user-facing side of applying (Modals, Form submission).
+2. StaffCommands: Provides administrative commands to manage staff positions,
+   start/end trials, and edit application questions dynamically.
+
+Key Features:
+- Dynamic form generation based on `data/trial_config.json`.
+- Interactive modals for applicants to submit responses.
+- Automated trial management (start dates, end dates, notifications).
+- Role-based access control for administrative commands.
+
+Dependencies:
+    - interactions (Discord interactions)
+    - core (Internal utilities, server setup, emojis)
+"""
+
 import interactions as ipy
 import difflib
 import json
@@ -17,6 +37,12 @@ def has_staff_roles(*role_keys):
     Custom check to validate if a user has one of the allowed roles 
     defined in the server configuration.
     
+    This abstracts role ID fetching, allowing the bot to work across different
+    server configurations without hardcoding IDs.
+
+    Args:
+        *role_keys: Strings representing the attribute names in GuildConfig (e.g., "MODERATOR_ROLE").
+    
     Usage: @has_staff_roles("MODERATOR_ROLE", "ADMINISTRATION_ROLE")
     """
     async def check(ctx: ipy.SlashContext):
@@ -33,7 +59,7 @@ def has_staff_roles(*role_keys):
                 allowed_ids.append(int(role_id))
         
         if not allowed_ids:
-            # If no roles are configured, fail safe
+            # If no roles are configured, fail safe (deny access)
             return False
             
         return any(int(role.id) in allowed_ids for role in ctx.author.roles)
@@ -45,12 +71,26 @@ def has_staff_roles(*role_keys):
 # ==========================================
 
 class StaffApplication(ipy.Extension):
-    def __init__(self, bot):
-        self.bot: ipy.Client = bot
+    """
+    Handles the user-facing application process for staff positions.
+    """
+
+    def __init__(self, bot: ipy.Client):
+        self.bot = bot
 
     @ipy.component_callback("staff_start_menu")
     async def apply_staff(self, ctx: ipy.ComponentContext):
-        # Validate that the user interacting is the ticket owner
+        """
+        Callback for the Staff Position Selection Menu.
+
+        Triggered when a user selects a position to apply for. It validates the user,
+        checks if applications for that position are open, and presents a Modal form.
+
+        Args:
+            ctx (ipy.ComponentContext): The context of the menu interaction.
+        """
+        # Identity Verification:
+        # Validate that the user interacting is the ticket owner.
         topic_id = extract_integer(ctx.channel.topic) if ctx.channel.topic else 0
         channel_user_name = ctx.channel.name.split("┃")[1] if "┃" in ctx.channel.name else ""
         
@@ -63,6 +103,7 @@ class StaffApplication(ipy.Extension):
             return
 
         staff_name = ctx.values[0]
+        # Encode space to '0' for custom_id compatibility (spaces are often problematic)
         modified_name = staff_name.replace(" ", "0")
         
         try:
@@ -71,15 +112,18 @@ class StaffApplication(ipy.Extension):
             await ctx.send(f"{get_app_emoji('error')} Configuration file not found.", ephemeral=True)
             return
 
+        # Check if the position is currently accepting applications
         if not trial_config.get(staff_name) or trial_config[staff_name]["application"] == "False":
             await ctx.send(f"{get_app_emoji('error')} Sorry the application of `{staff_name}` is currently closed.",
                            ephemeral=True)
             return
 
+        # Construct the Modal
         modal = ipy.Modal(title=f"{staff_name} Form", custom_id=f"{modified_name}_staff_modal")
 
+        # Dynamically add input fields based on the config for this staff position
         for count, question in enumerate(trial_config[staff_name]["questions"]):
-            # Limit to 5 components per modal if needed, currently dynamic
+            # Note: Discord Modals have a limit of 5 components.
             modal.add_components(
                 ipy.InputText(
                     label=question["question"],
@@ -94,13 +138,23 @@ class StaffApplication(ipy.Extension):
 
     @ipy.modal_callback(re.compile(r"^\w+_staff_modal$"))
     async def staff_modal(self, ctx: ipy.ModalContext, **responses):
+        """
+        Callback for the Staff Application Modal submission.
+
+        Processes the form data, posts a summary embed to the ticket,
+        and provides administrative buttons (Start/Delay/Deny Trial) to staff.
+
+        Args:
+            ctx (ipy.ModalContext): The context of the modal submission.
+        """
         try:
             trial_config = json.load(open("data/trial_config.json", "r"))
         except FileNotFoundError:
             return
 
+        # Decode staff name from custom_id
         staff_name = ctx.custom_id.split("_")[0].replace("0", " ")
-        staff_emoji = "<:StaffIcon:1318289342736629902>" # You might want to move this to emojis_manager too
+        staff_emoji = "<:StaffIcon:1318289342736629902>" # TODO: Move to core.emojis_manager
 
         embed = ipy.Embed(
             title=f"{staff_emoji} **{staff_name} Application Response**",
@@ -118,6 +172,7 @@ class StaffApplication(ipy.Extension):
             color=COLOR
         )
 
+        # Map responses back to questions
         modal_responses = list(responses.values())
         for count, modal_response in enumerate(modal_responses):
             question_text = trial_config[staff_name]['questions'][count]['question']
@@ -127,6 +182,7 @@ class StaffApplication(ipy.Extension):
                 inline=False
             )
 
+        # Administrative Action Buttons
         start_button = ipy.Button(
             style=ipy.ButtonStyle.SUCCESS,
             label="Start Trial",
@@ -147,7 +203,7 @@ class StaffApplication(ipy.Extension):
 
         actionrows = [ipy.ActionRow(start_button, delay_button, deny_button)]
         
-        # Use dynamic config for pinging roles
+        # Determine whom to ping (Moderators/Admins) based on server config
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
         role_pings = []
         if config.MODERATOR_ROLE: role_pings.append(f"<@&{config.MODERATOR_ROLE}>")
@@ -155,6 +211,7 @@ class StaffApplication(ipy.Extension):
         
         ping_content = " and ".join(role_pings) if role_pings else "Staff"
 
+        # Send summary to the ticket channel
         await ctx.channel.send(LINE_URL)
         await ctx.channel.send(
             ping_content,
@@ -162,7 +219,7 @@ class StaffApplication(ipy.Extension):
         )
         await ctx.channel.send(LINE_URL)
 
-        # Update channel name with font prefix
+        # Update channel name with the specific staff position prefix
         raw_prefix = trial_config[staff_name]['prefix']
         staff_prefix = raw_prefix.translate(PREFIX_DICT)
         try:
@@ -178,14 +235,21 @@ class StaffApplication(ipy.Extension):
         )
 
 class StaffCommands(ipy.Extension):
-    def __init__(self, bot):
-        self.bot: ipy.Client = bot
+    """
+    Administrative commands for managing the Staff system.
+    """
+    def __init__(self, bot: ipy.Client):
+        self.bot = bot
 
     staff_base = ipy.SlashCommand(name="staff", description="Staff application utility")
 
     @staff_base.subcommand(sub_cmd_name="server", sub_cmd_description="Get staff server link")
     @has_staff_roles("RECRUITMENT_ROLE", "SERVER_DEVELOPMENT_ROLE", "ADMINISTRATION_ROLE", "LEADER_ROLE")
     async def staff_server(self, ctx: ipy.SlashContext):
+        """
+        Retrieves the Staff Server Invite URL from the configuration.
+        Restricted to specific staff roles.
+        """
         # Fetch Dynamic URL from Config
         config = sc.get_config(ctx.guild.id)
         url = config.STAFF_SERVER_URL
@@ -208,15 +272,20 @@ class StaffCommands(ipy.Extension):
         autocomplete=True,
     )
     async def staff_trial_end(self, ctx: ipy.SlashContext, staff_name: str):
+        """
+        Manually ends a staff trial for the user in the current channel.
+        Removes the trial event from the database and prompts for a vote.
+        """
         await ctx.defer(ephemeral=True)
 
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
 
-        # Check if we are in the correct category
+        # Validation: Command must be used in the Active Trials category
         if str(ctx.channel.parent_id) != str(config.STAFF_TRIALS_CATEGORY):
             await ctx.send(f"{get_app_emoji('error')} You can only use this command when there is a on-going trial.", ephemeral=True)
             return
 
+        # Identify the trial subject (member)
         member = None
         for overwrite in ctx.channel.permission_overwrites:
             if overwrite.type == ipy.OverwriteType.MEMBER:
@@ -257,7 +326,7 @@ class StaffCommands(ipy.Extension):
             color=COLOR
         )
 
-        # Update JSON database
+        # Remove trial from active events database
         try:
             trial_events = json.load(open("data/trial_events.json", "r"))
             key = f"{ctx.channel.id}|{member.id}"
@@ -292,18 +361,24 @@ class StaffCommands(ipy.Extension):
         min_value=3
     )
     async def staff_trial_start(self, ctx: ipy.SlashContext, staff_name: str, days: int):
+        """
+        Manually starts a staff trial.
+        Calculates the end date, registers the event, and moves the channel to the Trials category.
+        """
         await ctx.defer(ephemeral=True)
 
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
 
-        # Check if in pending category
+        # Validation: Command must be used in the Pending category
         if str(ctx.channel.parent_id) != str(config.STAFF_APPLY_CATEGORY):
             await ctx.send(f"{get_app_emoji('error')} You can only use this command when it is in the staff pending category.", ephemeral=True)
             return
 
+        # Calculate End Date
         end_date = datetime.now(timezone.utc) + timedelta(days=days)
         end = f"<t:{int(end_date.timestamp())}:D>"
 
+        # Identify the trial subject
         member = None
         for overwrite in ctx.channel.permission_overwrites:
             if overwrite.type == ipy.OverwriteType.MEMBER:
@@ -324,6 +399,7 @@ class StaffCommands(ipy.Extension):
             await ctx.send(f"{get_app_emoji('error')} Unable to get the applicant of this channel.", ephemeral=True)
             return
 
+        # Register event in database
         try:
             trial_events = json.load(open("data/trial_events.json", "r"))
         except FileNotFoundError:
@@ -363,35 +439,11 @@ class StaffCommands(ipy.Extension):
 
     @staff_edit_group.subcommand(sub_cmd_name="questions", sub_cmd_description="Edit application questions")
     @has_staff_roles("SERVER_DEVELOPMENT_ROLE")
-    @ipy.slash_option(
-        name="staff_name",
-        description="Name of the staff position.",
-        opt_type=ipy.OptionType.STRING,
-        required=True,
-        autocomplete=True,
-    )
-    @ipy.slash_option(
-        name="question_index",
-        description="Index of the question (1-3)",
-        opt_type=ipy.OptionType.INTEGER,
-        required=True,
-        choices=[
-            ipy.SlashCommandChoice(name="1", value=0),
-            ipy.SlashCommandChoice(name="2", value=1),
-            ipy.SlashCommandChoice(name="3", value=2),
-        ],
-    )
-    @ipy.slash_option(
-        name="question_type",
-        description="Determines the appearance of the question",
-        opt_type=ipy.OptionType.STRING,
-        choices=[
-            ipy.SlashCommandChoice(name="Paragraph", value="Paragraph"),
-            ipy.SlashCommandChoice(name="Short", value="Short"),
-        ],
-    )
     async def staff_edit_questions(self, ctx: ipy.SlashContext, staff_name: str, question_index: int,
                                    question_type: str = None):
+        """
+        Edits the text or type of a specific question for a staff position.
+        """
         try:
             trial_config = json.load(open("data/trial_config.json", "r"))
         except FileNotFoundError:
@@ -440,20 +492,10 @@ class StaffCommands(ipy.Extension):
 
     @staff_edit_group.subcommand(sub_cmd_name="application", sub_cmd_description="Edit staff application status")
     @has_staff_roles("SERVER_DEVELOPMENT_ROLE")
-    @ipy.slash_option(
-        name="staff_name",
-        description="Name of the staff position.",
-        opt_type=ipy.OptionType.STRING,
-        required=True,
-        autocomplete=True
-    )
-    @ipy.slash_option(
-        name="application_status",
-        description="Staff position application status",
-        opt_type=ipy.OptionType.BOOLEAN,
-        required=True
-    )
     async def staff_edit_application(self, ctx: ipy.SlashContext, staff_name: str, application_status: bool):
+        """
+        Toggles the ability to apply for a specific staff position (Open/Closed).
+        """
         await ctx.defer(ephemeral=True)
         if staff_name == "Other":
             await ctx.send(f"{get_app_emoji('error')} This staff position is not editable!", ephemeral=True)
@@ -474,42 +516,11 @@ class StaffCommands(ipy.Extension):
 
     @staff_base.subcommand(sub_cmd_name="add", sub_cmd_description="Add a staff position")
     @has_staff_roles("SERVER_DEVELOPMENT_ROLE")
-    @ipy.slash_option(
-        name="staff_name",
-        description="Write down the name of this staff position",
-        opt_type=ipy.OptionType.STRING,
-        required=True
-    )
-    @ipy.slash_option(
-        name="question1",
-        description="1st question of the application",
-        opt_type=ipy.OptionType.STRING,
-        max_length=45,
-        required=True
-    )
-    @ipy.slash_option(
-        name="question2",
-        description="2nd question of the application",
-        opt_type=ipy.OptionType.STRING,
-        max_length=45,
-        required=True
-    )
-    @ipy.slash_option(
-        name="question3",
-        description="3rd question of the application",
-        opt_type=ipy.OptionType.STRING,
-        max_length=45,
-        required=True
-    )
-    @ipy.slash_option(
-        name="staff_prefix",
-        description="Write down the prefix of the staff position",
-        opt_type=ipy.OptionType.STRING,
-        max_length=5,
-        required=True
-    )
     async def staff_add(self, ctx: ipy.SlashContext, staff_name: str, question1: str, question2: str, question3: str,
                         staff_prefix: str):
+        """
+        Adds a completely new staff position to the configuration.
+        """
         await ctx.defer(ephemeral=True)
 
         try:
@@ -527,12 +538,11 @@ class StaffCommands(ipy.Extension):
             "application": "True"
         }
 
-        # Ensure "Other" remains at the end or exists
+        # Ensure "Other" remains at the end or exists (fallback logic)
         other = trial_config.pop("Other", None)
         if other is not None:
             trial_config["Other"] = other
         else:
-            # Default fallback
             trial_config["Other"] = {
                 "questions": [
                     {"question": "Default Question 1", "placeholder": "", "type": "Paragraph"},
@@ -550,14 +560,10 @@ class StaffCommands(ipy.Extension):
 
     @staff_base.subcommand(sub_cmd_name="remove", sub_cmd_description="Remove a staff position")
     @has_staff_roles("SERVER_DEVELOPMENT_ROLE")
-    @ipy.slash_option(
-        name="staff_name",
-        description="Name of the staff position.",
-        opt_type=ipy.OptionType.STRING,
-        required=True,
-        autocomplete=True,
-    )
     async def staff_remove(self, ctx: ipy.SlashContext, staff_name: str):
+        """
+        Removes a staff position from the configuration.
+        """
         await ctx.defer(ephemeral=True)
 
         if staff_name == "Other":
@@ -579,6 +585,10 @@ class StaffCommands(ipy.Extension):
 
     @ipy.global_autocomplete(option_name="staff_name")
     async def staff_autocomplete(self, ctx: ipy.AutocompleteContext):
+        """
+        Autocomplete handler for 'staff_name' arguments.
+        Fetches available staff positions from trial_config.json.
+        """
         try:
             trial_config = json.load(open("data/trial_config.json", "r"))
         except FileNotFoundError:
@@ -606,6 +616,9 @@ class StaffCommands(ipy.Extension):
 
         await ctx.send(results)
 
-def setup(bot):
+def setup(bot: ipy.Client):
+    """
+    Entry point for loading the extensions.
+    """
     StaffApplication(bot)
     StaffCommands(bot)

@@ -1,3 +1,21 @@
+"""
+Application Components & Embed Manager.
+
+This module contains two primary extensions:
+1. ApplicationComponents: Handles the interactive logic for the clan application system,
+   including dropdown selections, confirmation/cancellation flows, and support requests.
+   It acts as the "backend" for the interactive UI elements presented to users.
+
+2. EmbedCommands: Provides administrative commands to generate the "frontend" UI embeds
+   (e.g., the "Apply Now" panels, Live Clan Boards). It connects the static UI 
+   elements to the dynamic logic handled by TicketManager and ApplicationComponents.
+
+Dependencies:
+    - interactions (Discord interactions)
+    - core (Internal utilities, models, and emoji management)
+    - cogs.general.tickets (Ticket lifecycle management)
+"""
+
 import interactions as ipy
 import re
 import json
@@ -8,6 +26,7 @@ from datetime import datetime
 from collections import Counter
 import coc
 
+# Explicit imports for internal dependencies
 from core.checks import *
 from core.utils import *
 from core.models import *
@@ -17,36 +36,65 @@ from cogs.general.tickets import *
 
 
 class ApplicationComponents(ipy.Extension):
-    def __init__(self, bot):
-        self.bot: ipy.Client = bot
+    """
+    Handles interactive components (buttons, select menus) related to the Clan Application process.
+    """
+
+    def __init__(self, bot: ipy.Client):
+        """
+        Initialize the extension.
+
+        Args:
+            bot (ipy.Client): The main bot instance.
+        """
+        self.bot = bot
 
     @ipy.slash_command(name="clan", description="Clan utility")
     async def clan_base(self, ctx: ipy.SlashContext):
+        """
+        Base slash command group for 'clan' related utilities.
+        Actual functionality is implemented in subcommands.
+        """
         pass
 
     @ipy.component_callback("support_button")
     async def support_button(self, ctx: ipy.ComponentContext):
+        """
+        Callback for the 'Human Support' button within application tickets.
+        
+        This notifies the appropriate staff role based on the ticket category (Clan, FWA, Staff, etc.),
+        alerting them that an applicant requires manual assistance.
+
+        Args:
+            ctx (ipy.ComponentContext): The context of the button interaction.
+        """
+        # Security: Verify that the user requesting support is the ticket owner.
+        # Checks against channel topic (User ID) and channel name (Username).
         if extract_integer(ctx.channel.topic) != int(ctx.author.id) and \
                 extract_alphabets(ctx.author.username) != ctx.channel.name.split("┃")[1]:
             await ctx.send(f"{get_app_emoji('error')} Only the applicant of this channel can request support!",
                            ephemeral=True)
             return
 
+        # Acknowledge the request immediately to the user
         await ctx.send(f"{get_app_emoji('success')} Human support will arrive soon, in the meanwhile please wait patiently, "
                        f"and please write down how we can help you.",
                        ephemeral=True)
         
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
 
+        # Route the support ping to the correct role based on the ticket category (Parent Channel ID)
         if ctx.channel.parent_id in [
             config.CLAN_TICKETS_CATEGORY,
             config.AFTER_CWL_CATEGORY,
             config.FWA_TICKETS_CATEGORY
         ]:
+            # Clan/FWA tickets -> Ping Leaders
             await ctx.channel.send(
                 f"<@&{config.LEADER_ROLE}> **{ctx.author.user.username}** needs support!"
             )
         elif ctx.channel.parent_id == config.CHAMPIONS_TRIALS_CATEGORY:
+            # Champions Trials -> Ping Moderators
             await ctx.channel.send(
                 f"<@&{config.MODERATOR_ROLE}> **{ctx.author.user.username}** needs support!"
             )
@@ -55,47 +103,66 @@ class ApplicationComponents(ipy.Extension):
             config.PARTNER_TICKETS_CATEGORY,
             config.STAFF_TRIALS_CATEGORY
         ]:
+            # General Support/Partner/Staff -> Ping Moderators
             await ctx.channel.send(
                 f"<@&{config.MODERATOR_ROLE}> **{ctx.author.user.username}** needs support!"
             )
 
     @ipy.component_callback(re.compile(r"^clan_select\|\w+\|\d+$"))
     async def clan_selection(self, ctx: ipy.ComponentContext):
+        """
+        Callback for the Clan Selection Dropdown.
+
+        Triggered when a user selects a specific clan for one of their accounts.
+        It updates the application 'package' state and presents detailed info about the selected clan.
+
+        Args:
+            ctx (ipy.ComponentContext): The context of the dropdown interaction.
+        """
         await ctx.defer(ephemeral=True)
 
         message = ctx.message
+        # Load current state of applications and clan configurations
         packages: dict[str, ApplicationPackage] = json.load(open("data/packages.json", "r"))
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
+        # Parse custom_id format: "clan_select|{token}|{index}"
         _, package_token, fillernumber = ctx.custom_id.split("|")
 
         package = packages[package_token]
         acc_clan = package["acc_clan"]
         user = await self.bot.fetch_member(package["user"], ctx.guild.id, force=True)
 
+        # Verify interaction ownership
         if int(user.id) != int(ctx.author.id):
             await ctx.send(f"{get_app_emoji('error')} You **cannot** interact with other user's components.", ephemeral=True)
             return
 
         clan_tag = ctx.values[0]
+        # Extract account tag from the placeholder text (UI hacks used to persist state visually)
         account_tag = re.search(r"\(#(\w+)\)", ctx.component.placeholder).group(1).replace(")", "")
 
         clan = await fetch_clan(self.bot.coc, clan_tag)
         player = await fetch_player(self.bot.coc, account_tag)
 
+        # Update the package with the selected clan
         acc_clan[player.tag] = clan_tag
 
         with open("data/packages.json", "w") as file:
             json.dump(packages, file, indent=4)
 
+        # Update the specific dropdown to show the selection visually and lock it temporarily?
+        # (Logic suggests it updates placeholder to show selection)
         ctx.component.placeholder = f"✅ {player.name} ({player.tag}) → {clan.name}"
         ctx.component.disabled = True
 
         await message.edit(components=message.components)
 
+        # Generate specific clan information message (requirements, messages, etc.)
         clan_msg = "\n".join([msg for msg in clans_config[clan_tag]['msg'].split("|")])
         msg_content = f"__**Key Clan Information**__ `{clan.name}`\n\n{clan_msg}\n\n"
     
+        # Add warnings if clan is full or specific conditions apply
         if clan.member_count == 50 and clans_config[clan_tag]['type'] != "FWA":
             msg_content += f"{get_app_emoji('warning')} *`{clan.name}` is currently full. You may still join the clan, but it will take time " \
                         f"as the clan leader will need to make space first!*"
@@ -111,9 +178,12 @@ class ApplicationComponents(ipy.Extension):
 
         await ctx.send(msg_content, components=clan_link_button, ephemeral=True, delete_after=8)
 
+        # Check if all accounts in the package have a selection made.
         if any(not clan_value for clan_value in acc_clan.values()):
             return
 
+        # If all accounts have selections, wait for final confirmation interaction
+        # or auto-confirm after timeout.
         perm_ctx = PermanentContext(ctx.message, ctx.custom_id, ctx.channel, ctx.guild, ctx.deferred, ctx.author,
                                     ctx.kwargs)
 
@@ -123,6 +193,7 @@ class ApplicationComponents(ipy.Extension):
             await event.ctx.send(f"{get_app_emoji('error')} You cannot interact with other user's components.", ephemeral=True)
             return False
 
+        # Timeout logic for auto-confirmation suggestion
         try:
             await self.bot.wait_for_component(messages=ctx.message, check=check, timeout=300)
         except asyncio.TimeoutError:
@@ -133,6 +204,7 @@ class ApplicationComponents(ipy.Extension):
         else:
             return
 
+        # Second timeout forces auto-confirmation
         try:
             await self.bot.wait_for_component(messages=ctx.message, check=check, timeout=300)
         except asyncio.TimeoutError:
@@ -140,6 +212,18 @@ class ApplicationComponents(ipy.Extension):
     
     @ipy.component_callback(re.compile(r"^clan_confirm\|\w+$"))
     async def clan_confirm(self, ctx: ipy.ComponentContext | PermanentContext):
+        """
+        Callback for the 'Confirm' button.
+
+        Finalizes the application process by:
+        1. Locking the UI components.
+        2. generating a summary embed of applicants and their target clans.
+        3. Pinging the specific recruiters/elders for the target clans.
+        4. Renaming the ticket to reflect the target clan prefix.
+
+        Args:
+            ctx (ipy.ComponentContext | PermanentContext): Context of the interaction or the simulated context from auto-confirm.
+        """
         await ctx.defer(ephemeral=True) if not ctx.deferred else None
         
         message = ctx.message
@@ -155,13 +239,16 @@ class ApplicationComponents(ipy.Extension):
             await ctx.send(f"{get_app_emoji('error')} You **cannot** interact with other user's components.", ephemeral=True)
             return
 
+        # Ensure at least one selection has been made
         if not any(acc_clan.values()):
             await ctx.send(f"{get_app_emoji('error')} Please select a clan to apply for **at least one** of your accounts!",
                         ephemeral=True)
             return
         
+        # Disable all components to prevent further changes
         await message.edit(components=ipy.utils.misc_utils.disable_components(*message.components))
 
+        # Build Application Summary Embed
         embed = ipy.Embed(
             title=f"**Application Summary**",
             description=f"**User Tag:** {user.username}\n"
@@ -174,7 +261,6 @@ class ApplicationComponents(ipy.Extension):
             color=COLOR
         )
     
-
         player_options = []
         role_mentions = []
         townhall_emoji = None
@@ -183,6 +269,7 @@ class ApplicationComponents(ipy.Extension):
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
         recruitment_role_id = config.RECRUITMENT_ROLE
 
+        # Iterate through selections to build the summary and calculate mentions
         for count, (acc, clan) in enumerate(acc_clan.items(), start=1):
             if not clan:
                 continue
@@ -190,9 +277,11 @@ class ApplicationComponents(ipy.Extension):
             player = await fetch_player(self.bot.coc, acc)
             clan = await fetch_clan(self.bot.coc, clan)
 
+            # Determine which roles to ping based on the selected clan's config
             if f"<@&{clans_config[clan.tag]['role']}>" not in role_mentions:
-                role_mentions.append(f"<@&{clans_config[clan.tag]['gk_role']}>")
+                role_mentions.append(f"<@&{clans_config[clan.tag]['gk_role']}>") # 'gk_role' likely stands for Gatekeeper/Recruiter
 
+                # Grant permission to the specific clan's recruiters to see this ticket
                 clan_role = await ctx.guild.fetch_role(clans_config[clan.tag]['gk_role'])
                 for member in clan_role.members:
                     member_roles = [int(role.id) for role in member.roles]
@@ -205,6 +294,7 @@ class ApplicationComponents(ipy.Extension):
 
             townhall_emoji = ipy.PartialEmoji.from_str(get_app_emoji(f"Townhall{player.town_hall}"))
 
+            # Retrieve custom emoji for the clan if available
             clan_emoji = get_app_emoji('unavailable')
             clan_emoji_name = clans_config[clan.tag]['emoji']
             fetched_emoji = get_app_emoji(clan_emoji_name)
@@ -220,6 +310,7 @@ class ApplicationComponents(ipy.Extension):
                 inline=False
             )
 
+            # If there are multiple accounts, prepare a dropdown to view different profiles
             if len([value for value in acc_clan.values() if value]) == 1:
                 continue
 
@@ -231,8 +322,8 @@ class ApplicationComponents(ipy.Extension):
             )
             player_options.append(player_option)
         
+        # Prepare components for the final message (Link to ClashOfStats or Dropdown)
         formatted_tag2 = player.tag.lstrip("#") 
-
         player_info = ipy.Button(
             style=ipy.ButtonStyle.URL,
             url = f"https://www.clashofstats.com/players/{formatted_tag2}/army",
@@ -248,6 +339,7 @@ class ApplicationComponents(ipy.Extension):
 
         components = [player_info]
 
+        # Send the summary and pings
         await ctx.channel.send(LINE_URL)
         await ctx.channel.send(
             f"\n".join(role_mentions),
@@ -257,12 +349,15 @@ class ApplicationComponents(ipy.Extension):
         )
         await ctx.channel.send(LINE_URL)
 
+        # Attempt to rename the channel with the clan's prefix
         try:
+            # Use the prefix of the first selected clan
             clan_prefix = clans_config[list(acc_clan.values())[0]]['prefix'].translate(PREFIX_DICT)
             parent_id = config.CLAN_TICKETS_CATEGORY if int(
                 ctx.channel.category.id) == config.FWA_TICKETS_CATEGORY else ctx.channel.category.id
             await ctx.channel.edit(name=f"{clan_prefix}┃{user.user.username}", parent_id=parent_id)
         except (ipy.errors.DiscordError, ipy.errors.RateLimited, ipy.errors.Forbidden):
+            # Ignore errors if bot lacks permission or is rate limited
             pass
 
         if isinstance(ctx, ipy.ComponentContext):
@@ -271,8 +366,8 @@ class ApplicationComponents(ipy.Extension):
                 ephemeral=True, delete_after=4
             )
 
+        # Post welcome messages/questions specific to the selected clans
         unique_clan_tags = list(set([clan for clan in acc_clan.values() if clan]))
-        
         questions_content = ""
         for tag in unique_clan_tags:
             if tag not in clans_config:
@@ -280,7 +375,6 @@ class ApplicationComponents(ipy.Extension):
 
             clan_data = clans_config[tag]
             clan_name = clan_data['name']
-            
             raw_questions = clan_data.get('questions', "")
             
             if not raw_questions or raw_questions == "None":
@@ -297,6 +391,15 @@ class ApplicationComponents(ipy.Extension):
 
     @ipy.component_callback(re.compile(r"^clan_cancel\|\w+$"))
     async def clan_cancel(self, ctx: ipy.ComponentContext):
+        """
+        Callback for the 'Cancel' button.
+
+        Resets the selection state in the package and re-enables the dropdowns,
+        allowing the user to change their mind.
+
+        Args:
+            ctx (ipy.ComponentContext): Context of the cancel interaction.
+        """
         packages: dict[str, ApplicationPackage] = json.load(open("data/packages.json", "r"))
         package_token = ctx.custom_id.split("|")[1]
         package = packages[package_token]
@@ -306,8 +409,10 @@ class ApplicationComponents(ipy.Extension):
             await ctx.send(f"{get_app_emoji('error')} You **cannot** interact with other user's components.", ephemeral=True)
             return
 
+        # Iterate through components to reset them
         for count, action_row in enumerate(ctx.message.components):
             for component in action_row.components:
+                # Identify valid clan selection dropdowns
                 if component.type == ipy.ComponentType.STRING_SELECT and not component.placeholder.endswith("not eligible"):
                     player_tag = package["account_tags"][count]
                     player = await fetch_player(self.bot.coc, player_tag)
@@ -315,6 +420,7 @@ class ApplicationComponents(ipy.Extension):
                     component.disabled = False
                     component.placeholder = f"{NUMBER_EMOJIS[count + 1]} Select a clan for {player.name} ({player.tag})"
 
+                    # Clear the selection in the backend package
                     package["acc_clan"][player_tag] = None
 
         with open("data/packages.json", "w") as file:
@@ -329,8 +435,21 @@ class ApplicationComponents(ipy.Extension):
     @ipy.slash_option(name="user", description="A server member", opt_type=ipy.OptionType.USER, required=True)
     @ipy.slash_option(name="player_tag1", description="User's 1st tag", opt_type=ipy.OptionType.STRING, required=True, autocomplete=True)
     async def clan_select(self, ctx: ipy.SlashContext, user: ipy.Member, player_tag1: str = "None"):
+        """
+        Manual Subcommand: Generate Clan Selection Panel.
+
+        Allows staff to manually trigger the clan selection panel for a user inside an interview channel.
+        Useful if the automated process fails or needs a reset.
+
+        Args:
+            ctx (ipy.SlashContext): The slash command context.
+            user (ipy.Member): The applicant.
+            player_tag1 (str): The primary Clash of Clans player tag to generate options for.
+        """
         await ctx.defer(ephemeral=True)
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
+        
+        # Validation: command must be used in specific ticket categories
         if int(ctx.channel.parent_id) not in [config.CLAN_TICKETS_CATEGORY, config.AFTER_CWL_CATEGORY, config.FWA_TICKETS_CATEGORY]:
             await ctx.send(f"{get_app_emoji('error')} This command can only be used in interview/application channels.")
             return
@@ -342,6 +461,7 @@ class ApplicationComponents(ipy.Extension):
             await ctx.send(f"{get_app_emoji('error')} Not a single valid player tag is provided!")
             return
 
+        # Ensure emojis are up to date
         await fetch_emojis(self.bot, update=True)
 
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
@@ -352,6 +472,8 @@ class ApplicationComponents(ipy.Extension):
         clan_actionrows = []
         acc_clan = {}
         acc_images = {}
+        
+        # Generate dropdown options for each provided account tag
         for count, account in enumerate(account_tags, start=1):
             if not account: continue
 
@@ -359,6 +481,8 @@ class ApplicationComponents(ipy.Extension):
             clan_count = 0
             acc_clan[account] = None
             acc_images[account] = None
+            
+            # Filter clans based on requirements (TH level, hero levels via checks)
             for key in normal_clans:
                 try: value = clans_config[key]
                 except KeyError: continue
@@ -385,6 +509,7 @@ class ApplicationComponents(ipy.Extension):
                 clan = await fetch_clan(self.bot.coc, key)
                 clan_league = str(clan.war_league).replace("League ", "")
 
+                # Set up emojis
                 iclan_emoji = ipy.PartialEmoji.from_str(get_app_emoji('unavailable'))
                 if value["emoji"]:
                     emoji_str = get_app_emoji(value["emoji"])
@@ -460,6 +585,10 @@ class ApplicationComponents(ipy.Extension):
 
     @ipy.global_autocomplete(option_name="player_tag1")
     async def player_tag1_autocomplete(self, ctx: ipy.AutocompleteContext):
+        """
+        Autocomplete handler for player tags.
+        Fetches linked accounts for the selected user to ease input.
+        """
         if "user" not in ctx.kwargs:
             tag_choice = [{"name": "Please choose a user first", "value": "None"}]
             await ctx.send(tag_choice)
@@ -486,8 +615,12 @@ class ApplicationComponents(ipy.Extension):
 
 
 class EmbedCommands(ipy.Extension):
-    def __init__(self, bot):
-        self.bot: ipy.Client = bot
+    """
+    Extension for managing and deploying static embed interfaces (e.g., Live Clan Boards, Application Panels).
+    """
+
+    def __init__(self, bot: ipy.Client):
+        self.bot = bot
 
     embed_base = ipy.SlashCommand(
         name="embed", description="Embed utility", 
@@ -496,6 +629,12 @@ class EmbedCommands(ipy.Extension):
 
     @embed_base.subcommand(sub_cmd_name="clan", sub_cmd_description="Live clan embed")
     async def embed_clan(self, ctx: ipy.SlashContext):
+        """
+        Generates the 'Live Clan Board' embed.
+        
+        This embed allows users to interactively view different clan types (Competitive, FWA, CWL)
+        via buttons that update the message content.
+        """
         await ctx.defer(ephemeral=True)
 
         config: sc.GuildConfig = sc.get_config(ctx.guild.id)
@@ -543,6 +682,11 @@ class EmbedCommands(ipy.Extension):
 
     @ipy.component_callback(re.compile(r"^\w+_clans_button$"))
     async def clans_buttons(self, ctx: ipy.ComponentContext):
+        """
+        Callback for the 'Clan Type' buttons (Comp, FWA, CWL) in the Live Embed.
+        
+        Dynamically generates a dropdown menu containing all clans of the selected type.
+        """
         await ctx.defer(ephemeral=True)
 
         data = CLAN_TYPE_DATA[ctx.custom_id.split("_")[0]]
@@ -553,12 +697,16 @@ class EmbedCommands(ipy.Extension):
 
         clan_embed = None
         clan_options = []
+        
+        # Iterate through clans to find matches for the selected type
         for key in normal_clans:
             try: value = alliance_clans[key]
             except KeyError: continue
             if value["type"].lower() != data.lower(): continue
 
             clan = await fetch_clan(self.bot.coc, key)
+            
+            # Generate the default preview embed (using the first match found)
             if not clan_embed:
                 league_emoji = get_app_emoji(str(clan.war_league).replace("League ", ""))
                 clan_description = clan.description if clan.description else "There is no clan description, it seems that the leader is too lazy..."
@@ -585,6 +733,7 @@ class EmbedCommands(ipy.Extension):
                     color=COLOR
                 )
 
+            # Generate select option for this clan
             iclan_emoji = ipy.PartialEmoji(name="Unavailable", id=1318284335580975125)
             emoji_str = get_app_emoji(value["emoji"])
             if "<" in emoji_str and ">" in emoji_str:
@@ -615,6 +764,10 @@ class EmbedCommands(ipy.Extension):
 
     @ipy.component_callback("live_clan_select")
     async def live_clan_select(self, ctx: ipy.ComponentContext):
+        """
+        Callback for the Live Clan Dropdown.
+        Updates the embed to show details for the specific clan selected from the dropdown.
+        """
         alliance_clans: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
         clan = await fetch_clan(self.bot.coc, ctx.values[0])
 
@@ -660,6 +813,14 @@ class EmbedCommands(ipy.Extension):
         required=True
     )
     async def embed_apply(self, ctx: ipy.SlashContext, layout_type: str):
+        """
+        Generates various Application Embeds (e.g., 'Apply for FWA', 'Apply for Staff').
+        Each embed comes with a corresponding 'Apply Now' button that triggers ticket creation.
+
+        Args:
+            ctx (ipy.SlashContext): The slash command context.
+            layout_type (str): The specific type of application panel to generate.
+        """
         style = ipy.ButtonStyle.SECONDARY
         arrow_emoji = get_app_emoji('arrow')
         diamond_emoji = get_app_emoji('diamond')
@@ -673,6 +834,7 @@ class EmbedCommands(ipy.Extension):
         fwa_id = globals().get('FWA_CHANNEL', 0)
         fwa_mention = f"<#{fwa_id}>" if fwa_id else "#fwa-info"
         
+        # Logic to customize embed content based on layout_type
         if layout_type.lower() == "clan":
             apply_emoji = ipy.PartialEmoji(name="🔰")
             style = ipy.ButtonStyle.BLURPLE
@@ -778,9 +940,21 @@ class EmbedCommands(ipy.Extension):
 
     @ipy.component_callback(re.compile(r"^\w+_apply_button$"))
     async def apply_buttons(self, ctx: ipy.ComponentContext):
+        """
+        Generic callback for all 'Apply Now' buttons generated by 'embed_apply'.
+
+        Triggers the TicketManager to create a new ticket channel based on the 
+        button's custom_id (which contains the ticket type).
+
+        Args:
+            ctx (ipy.ComponentContext): The button interaction context.
+        """
         await ctx.defer(ephemeral=True)
         member = ctx.author
+        # Extract ticket type from custom_id (e.g., "clan_apply_button" -> "clan")
         ticket_type = ctx.custom_id.split('_')[0]
+        
+        # Delegate ticket creation to the TicketManager
         channel = await TicketManager.create_ticket(ctx, member, ticket_type, self.bot)
         if not channel: return
 
@@ -789,6 +963,10 @@ class EmbedCommands(ipy.Extension):
         else:
             await ctx.send(f"{get_app_emoji('success')} Channel {channel.mention} is created. Please go there to start your interview.", ephemeral=True)
 
-def setup(bot):
+def setup(bot: ipy.Client):
+    """
+    Entry point for loading the extensions.
+    Registers both ApplicationComponents and EmbedCommands.
+    """
     ApplicationComponents(bot)
     EmbedCommands(bot)

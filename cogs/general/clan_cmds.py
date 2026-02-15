@@ -1,3 +1,19 @@
+"""
+Clan Management Commands Module.
+
+This extension provides a suite of slash commands for managing the alliance's clan portfolio.
+It includes functionality for:
+1. Viewing detailed clan information (General, Settings, Linked Members).
+2. Editing clan configurations (Messages, Questions, Requirements, Recruitment Status).
+3. Managing clan "checks" (e.g., minimum hero levels or trophy requirements).
+4. Adding or removing clans from the alliance system.
+
+Dependencies:
+    - interactions (Discord interactions)
+    - coc (Clash of Clans API wrapper)
+    - core (Internal utilities, models, checks, and emoji management)
+"""
+
 import interactions as ipy
 import json
 import re
@@ -5,36 +21,54 @@ import difflib
 import coc
 from coc import utils
 
+# Explicit imports to maintain code clarity
 from core.utils import *
 from core.models import *
 from core.emojis_manager import *
 from core.checks import *
 
 class ClanCmds(ipy.Extension):
-    def __init__(self, bot):
-        self.bot: ipy.Client = bot
+    """
+    Extension class housing all clan-related slash commands and component callbacks.
+    """
+
+    def __init__(self, bot: ipy.Client):
+        self.bot = bot
 
     @ipy.component_callback("clan_info")
     async def clan_info_button(self, ctx: ipy.ComponentContext):
-        # 1. Fetch all app emojis to cache so we can check for labels
+        """
+        Callback for the 'Clan Info' button often found in list views.
+        
+        Fetches and displays a public summary of the clan, including:
+        - Leader info
+        - War statistics
+        - Clan labels (with custom emojis if available)
+        - Current league and points
+
+        Args:
+            ctx (ipy.ComponentContext): The button interaction context.
+        """
+        # 1. Fetch all app emojis to cache so we can check for custom label emojis
         cached_emojis = await fetch_emojis(self.bot)
 
+        # Extract clan tag from the button label (Expected format: "Name (TAG)")
         clan_tag = ctx.component.label.split("(")[1].replace(")", "")
         clan = await fetch_clan(self.bot.coc, clan_tag)
         leader_object = utils.get(clan.members, role=coc.Role.leader)
         
-        # 2. Dynamic League Emoji
+        # 2. Dynamic League Emoji retrieval
         league_emoji = get_app_emoji(str(clan.war_league).replace(" ", ""))
         
         log = ":unlock: - public" if clan.public_war_log else ":lock: - private"
 
+        # 3. Dynamic Label Logic: Match in-game labels to cached custom emojis
         clan_labels = ""
         for label in clan.labels:
-            # 3. Dynamic Label Logic
             label_emoji = get_app_emoji('empty_label')
             label_key = str(label.name).replace(' ', '')
             
-            # Check if we have a specific emoji for this label
+            # Check if we have a specific emoji for this label key
             if label_key in cached_emojis:
                 label_emoji = cached_emojis[label_key]
 
@@ -47,6 +81,7 @@ class ClanCmds(ipy.Extension):
         if not clan_description:
             clan_description = "There is no clan description, it seems that the leader is too lazy..."
 
+        # Construct the summary embed
         clan_embed = ipy.Embed(
             title=f"**{clan.name}** `{clan.tag}`",
             description=f"{get_app_emoji('leader')}{leader_object.name} ({leader_object.tag})\n"
@@ -100,6 +135,7 @@ class ClanCmds(ipy.Extension):
 
     @ipy.slash_command(name="clan", description="Clan utility")
     async def clan_base(self, ctx: ipy.SlashContext):
+        """Base command for clan utilities."""
         pass
 
     @clan_base.subcommand(sub_cmd_name="info", sub_cmd_description="Clans' info utility")
@@ -127,6 +163,14 @@ class ClanCmds(ipy.Extension):
         opt_type=ipy.OptionType.BOOLEAN
     )
     async def clan_info(self, ctx: ipy.SlashContext, clan_name: str, info_type: str, hidden: bool = True):
+        """
+        Retrieves information about a specific alliance clan.
+        
+        Modes:
+        - Settings: Shows internal configuration (roles, channels, messages).
+        - Detailed: Shows public stats (War log, description, labels).
+        - Members: Lists members linked to Discord users.
+        """
         await ctx.defer(ephemeral=True if hidden else False)
 
         clan = await fetch_clan(self.bot.coc, clan_name)
@@ -134,6 +178,7 @@ class ClanCmds(ipy.Extension):
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
         if info_type == "settings":
+            # Display internal bot configuration for the clan
             value = clans_config[clan.tag]
             clan_messages = value["msg"].replace("|", "\n")
             clan_questions = value["questions"].replace("|", "\n")
@@ -186,6 +231,7 @@ class ClanCmds(ipy.Extension):
                 color=COLOR
             )
 
+            # Append custom checks if they exist
             clan_checks = ""
             for check in value["checks"]:
                 clan_checks += f"**{CLAN_CHECK_NAMES[check]}**\n" \
@@ -199,6 +245,7 @@ class ClanCmds(ipy.Extension):
                 )
 
         elif info_type == "detailed":
+            # Display public in-game statistics
             log = ":unlock: - public" if clan.public_war_log else ":lock: - private"
 
             clan_labels = ""
@@ -264,15 +311,17 @@ class ClanCmds(ipy.Extension):
             )
 
         else:
+            # Display list of linked members
             player_links = json.load(open("data/member_tags.json", "r"))
             player_links_reversed = reverse_dict(player_links)
 
             member_list = {}
             unlinked_list = []
+            
+            # Match clan members to discord users
             for member in clan.members:
                 if member.tag not in player_links_reversed:
                     unlinked_list.append(f"{member.name} `{member.tag}`")
-
                     continue
 
                 user_id = player_links_reversed[member.tag][0]
@@ -295,7 +344,6 @@ class ClanCmds(ipy.Extension):
 
             if unlinked_list:
                 unlinked_content = "\n".join(unlinked_list)
-
                 clan_embed.add_field(
                     name=f"**Unlinked Members**",
                     value=unlinked_content,
@@ -314,12 +362,13 @@ class ClanCmds(ipy.Extension):
         autocomplete=True
     )
     async def clan_link(self, ctx: ipy.SlashContext, clan_name: str):
+        """Returns the in-game share link for a clan."""
         clan = await fetch_clan(self.bot.coc, clan_name)
-
         await ctx.send(clan.share_link)
 
     @clan_base.group(name="checks", description="Add/remove/edit alliance clan checks")
     async def clan_checks_group(self, ctx: ipy.SlashContext):
+        """Group for managing clan requirements/checks."""
         pass
 
     @clan_checks_group.subcommand(sub_cmd_name="add", sub_cmd_description="Add a clan check")
@@ -346,6 +395,7 @@ class ClanCmds(ipy.Extension):
         required=True,
     )
     async def clan_checks_add(self, ctx: ipy.SlashContext, clan_name: str, check_type: str, min_value: int):
+        """Adds a specific validation check (e.g., Min Hero Level) to a clan."""
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
         try:
@@ -353,6 +403,7 @@ class ClanCmds(ipy.Extension):
         except IndexError:
             raise InvalidTagError(tag=clan_name, tag_type="clan")
 
+        # Limit checks to prevent complexity
         if len(clans_config[clan_tag]["checks"]) >= 2:
             await ctx.send(
                 f"{get_app_emoji('error')} Each clan can only have up to 2 checks. Remove irrelevent checks using `/clan checks remove`!",
@@ -388,6 +439,7 @@ class ClanCmds(ipy.Extension):
         choices=CLAN_CHECK_CHOICES
     )
     async def clan_checks_remove(self, ctx: ipy.SlashContext, clan_name: str, check_type: str):
+        """Removes a validation check from a clan."""
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
         try:
@@ -424,6 +476,7 @@ class ClanCmds(ipy.Extension):
         choices=CLAN_CHECK_CHOICES
     )
     async def clan_checks_edit(self, ctx: ipy.SlashContext, clan_name: str, check_type: str):
+        """Edits the minimum value of an existing clan check via Modal."""
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
         try:
@@ -451,6 +504,7 @@ class ClanCmds(ipy.Extension):
 
     @ipy.modal_callback(re.compile(r"^clan_check_edit\|\w+$"))
     async def clan_check_edit_modal(self, ctx: ipy.ModalContext, **kwargs):
+        """Modal callback for saving edited clan checks."""
         for value in ctx.responses.values():
             if value.isnumeric() and int(value) >= 0:
                 continue
@@ -472,6 +526,7 @@ class ClanCmds(ipy.Extension):
 
     @clan_base.group(name="edit", description="Edit alliance clan json data")
     async def clan_edit_group(self, ctx: ipy.SlashContext):
+        """Group for editing general clan configuration."""
         pass
 
 
@@ -496,6 +551,7 @@ class ClanCmds(ipy.Extension):
         required=True,
     )
     async def clan_edit_type(self, ctx: ipy.SlashContext, clan_name: str, clan_type: str):
+        """Updates the type of the clan (e.g., Competitive vs FWA)."""
         await ctx.defer(ephemeral=True)
 
         try:
@@ -521,12 +577,14 @@ class ClanCmds(ipy.Extension):
         autocomplete=True,
     )
     async def clan_edit_messages(self, ctx: ipy.SlashContext, clan_name: str):
+        """Opens a modal to edit the 3 key messages shown to applicants."""
         try:
             clan_tag = (await extract_tags(self.bot.coc, clan_name, extract_type="clan"))[0]
         except IndexError:
             raise InvalidTagError(tag=clan_name, tag_type="clan")
 
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
+        # Parse existing messages for the modal
         clan_messages = clans_config[clan_tag]["msg"].replace("- get_app_emoji('diamond') ", "").split("|")
         
         modal = ipy.Modal(
@@ -555,6 +613,7 @@ class ClanCmds(ipy.Extension):
 
     @ipy.modal_callback("clan_message_edit")
     async def clan_message_edit_modal(self, ctx: ipy.ModalContext, **kwargs):
+        """Modal callback for saving edited clan messages."""
         modal_data = ctx.responses
         clan_tag = list(modal_data.keys())[0]
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
@@ -579,6 +638,7 @@ class ClanCmds(ipy.Extension):
         autocomplete=True,
     )
     async def clan_edit_questions(self, ctx: ipy.SlashContext, clan_name: str):
+        """Opens a modal to edit the specific questions asked during application to this clan."""
         try:
             clan_tag = (await extract_tags(self.bot.coc, clan_name, extract_type="clan"))[0]
         except IndexError:
@@ -587,6 +647,7 @@ class ClanCmds(ipy.Extension):
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
         clan_questions = clans_config[clan_tag]["questions"].replace("get_app_emoji('arrowright') ", "").split("|")
 
+        # Pad list to 5 items for the modal
         clan_questions += [""] * (5 - len(clan_questions))
     
         modal = ipy.Modal(
@@ -632,10 +693,12 @@ class ClanCmds(ipy.Extension):
             
     @ipy.modal_callback(re.compile(r"^clan_questions_edit:.*$"))
     async def clan_questions_edit_modal(self, ctx: ipy.ModalContext, **kwargs):
+        """Modal callback for saving edited clan questions."""
         modal_data = ctx.responses
         clan_tag = ctx.custom_id.split(":")[1]
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
+        # Reconstruct string from modal inputs
         edited_questions = "|".join(
             f"{modal_data.get(f'textinput{i}', '')}"
             for i in ["a", "b", "c", "d", "e"]
@@ -672,6 +735,7 @@ class ClanCmds(ipy.Extension):
         required=True,
     )
     async def clan_edit_requirement(self, ctx: ipy.SlashContext, clan_name: str, clan_requirement: str):
+        """Updates the minimum Town Hall requirement for the clan."""
         await ctx.defer(ephemeral=True)
 
         try:
@@ -703,6 +767,7 @@ class ClanCmds(ipy.Extension):
         required=True,
     )
     async def clan_edit_recruitment(self, ctx: ipy.SlashContext, clan_name: str, recruitment_status: bool):
+        """Toggles whether the clan is currently accepting new members."""
         await ctx.defer(ephemeral=True)
 
         try:
@@ -870,12 +935,17 @@ class ClanCmds(ipy.Extension):
                     chat_channel: ipy.GuildChannel, clan_questions1: str, 
                     announcement_channel: ipy.GuildChannel = None, clan_emoji: str = "FreshStar", 
                     clan_questions2: str = None, clan_questions3: str = None, clan_questions4: str = None, clan_questions5: str = None):
+        """
+        Registers a new clan to the alliance system.
+        This updates the configuration file and registers the clan for API updates.
+        """
         await ctx.defer(ephemeral=True)
 
         added_clan = await fetch_clan(self.bot.coc, clan_tag)
 
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
 
+        # Calculate max hero levels (logic present but not currently stored/used in this function scope)
         max_hero_sum = 0
         for hero_name in ["Barbarian King", "Archer Queen", "Grand Warden", "Royal Champion", "Minion Prince"]:
             hero = self.bot.coc.get_hero(hero_name)
@@ -885,9 +955,9 @@ class ClanCmds(ipy.Extension):
 
         if added_clan.tag in clans_config.keys():
             await ctx.send(f"{get_app_emoji('error')} `{clan_tag}` is already part of the alliance.", ephemeral=True)
-
             return
 
+        # Format messages and questions for storage
         clan_msg = f"- {get_app_emoji('diamond')} {clan_message1}|" \
                 f"- {get_app_emoji('diamond')} {clan_message2}|" \
                 f"- {get_app_emoji('diamond')} {clan_message3}"
@@ -900,6 +970,7 @@ class ClanCmds(ipy.Extension):
         else:
             clan_questions = None  
 
+        # Build config object
         clans_config[added_clan.tag] = {
             "leader": int(clan_leader.id),
             "emoji": clan_emoji,
@@ -917,11 +988,13 @@ class ClanCmds(ipy.Extension):
             "checks": {},
         }
 
+        # Sort and save
         clans_config = await sort_clans_by_merit(self.bot.coc, clans_config)
 
         with open("data/clans_config.json", "w") as file:
             json.dump(clans_config, file, indent=4)
 
+        # Register for real-time events
         self.bot.coc.add_clan_updates(added_clan.tag)
 
         await ctx.send(f"{get_app_emoji('success')} `{added_clan.name} ({added_clan.tag})` is added to the alliance.",
@@ -938,6 +1011,7 @@ class ClanCmds(ipy.Extension):
         autocomplete=True,
     )
     async def clan_remove(self, ctx: ipy.SlashContext, clan_name: str):
+        """Removes a clan from the alliance configuration."""
         await ctx.defer(ephemeral=True)
 
         clan = await fetch_clan(self.bot.coc, clan_name)
@@ -956,6 +1030,7 @@ class ClanCmds(ipy.Extension):
 
     @ipy.global_autocomplete(option_name="clan_name")
     async def clan_autocomplete(self, ctx: ipy.AutocompleteContext):
+        """Autocomplete handler providing a list of configured alliance clans."""
         clans_config: dict[str, AllianceClanData] = json.load(open("data/clans_config.json", "r"))
         user_input = ctx.input_text
 
@@ -983,6 +1058,7 @@ class ClanCmds(ipy.Extension):
 
     @ipy.global_autocomplete(option_name="clan_emoji")
     async def emoji_autocomplete(self, ctx: ipy.AutocompleteContext):
+        """Autocomplete handler providing a list of available application emojis."""
         user_input = ctx.input_text
 
         # Fetch all emojis directly from the bot
@@ -1010,7 +1086,11 @@ class ClanCmds(ipy.Extension):
 
     @ipy.modal_callback("preview_modal")
     async def preview_modal(self, ctx: ipy.ModalContext, **kwargs):
+        """Generic callback for previewing modals (testing utility)."""
         await ctx.send(f"{get_app_emoji('success')} Modal preview is finished.", ephemeral=True)
 
-def setup(bot):
+def setup(bot: ipy.Client):
+    """
+    Entry point for loading the extension.
+    """
     ClanCmds(bot)

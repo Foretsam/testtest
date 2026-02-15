@@ -1,3 +1,25 @@
+"""
+Server Configuration Manager.
+
+This module manages dynamic server settings, allowing the bot to be adaptable without
+hardcoding role IDs or channel categories. It serves as the single source of truth for:
+1.  **Configuration Loading:** Reads from `data/server_configs.json`.
+2.  **Access Abstraction:** The `GuildConfig` class provides property-based access to settings,
+    handling fallbacks and type conversion (e.g., ensuring IDs are integers).
+3.  **Setup Commands:** Provides Slash Commands (`/setup_server_*`) for admins to configure the bot
+    directly within Discord, updating the JSON file in real-time.
+
+Key Components:
+-   `APPLY_DATA`: Definitions for application types (prefixes, categories, messages).
+-   `GuildConfig`: The primary interface for other extensions to retrieve settings.
+-   `Setup` (Extension): Handles the admin commands to modify the configuration.
+
+Dependencies:
+    - interactions (Discord interactions)
+    - json (Configuration persistence)
+    - os (File path verification)
+"""
+
 import interactions as ipy
 import json
 import os
@@ -6,6 +28,7 @@ import os
 CONFIG_FILE = 'data/server_configs.json'
 
 # --- Default Fallback Images ---
+# These URLs are used if specific images haven't been configured by the admin.
 DEFAULT_IMAGES = {
     "BANNER_URL": "https://cdn.discordapp.com/attachments/1410359521636909098/1410359919286161620/AFO_-_WELCOME_Channel.png?ex=68b0bb87&is=68af6a07&hm=e8f20ad16e7247f62bd5a03844fc525d7b89dd40e14f5d8824e48b308f18de0c&",
     "CLAN_BANNER_URL": "https://cdn.discordapp.com/attachments/1410359521636909098/1410360141966086256/AFO_-_CLAN_Apply_Channel.png?ex=68b0bbbd&is=68af6a3d&hm=ee9598ec8f7f6f0c492eac4a3ae4db934c96d855c4fca247fd931d79c9c26339&",
@@ -22,6 +45,8 @@ DEFAULT_IMAGES = {
 # ==============================
 # APPLICATION CONFIGURATION
 # ==============================
+# Maps application types to their required resources.
+# Used by `cogs/general/tickets.py` to create channels and embeds.
 APPLY_DATA = {
     "clan": {
         "categories": ["CLAN_TICKETS_CATEGORY", "AFTER_CWL_CATEGORY"],
@@ -67,19 +92,30 @@ APPLY_DATA = {
 
 # --- Helper Functions ---
 def load_config():
+    """Reads the JSON configuration file."""
     if not os.path.exists(CONFIG_FILE):
         return {}
     with open(CONFIG_FILE, 'r') as f:
         return json.load(f)
 
 def save_config(data):
+    """Writes data to the JSON configuration file."""
     with open(CONFIG_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 def update_server_config_bulk(guild_id, category, updates):
+    """
+    Updates multiple settings within a specific configuration category.
+    
+    Args:
+        guild_id (int): The ID of the guild being configured.
+        category (str): The section key (e.g., 'roles', 'channels', 'images').
+        updates (dict): Key-value pairs of settings to update.
+    """
     data = load_config()
     guild_id = str(guild_id)
 
+    # Initialize structure if missing
     if guild_id not in data:
         data[guild_id] = {"roles": {}, "channels": {}, "categories": {}, "ids": {}, "images": {}}
 
@@ -97,10 +133,15 @@ def update_server_config_bulk(guild_id, category, updates):
     return changes_made
 
 class GuildConfig:
+    """
+    Interface for accessing guild-specific configuration.
+    Wraps the raw dictionary data with properties for cleaner access code.
+    """
     def __init__(self, guild_id: int):
         self.guild_id = str(guild_id)
         self._data = load_config().get(self.guild_id, {})
 
+        # Sub-dictionaries for organized storage
         self.roles = self._data.get("roles", {})
         self.categories = self._data.get("categories", {})
         self.channels = self._data.get("channels", {})
@@ -117,7 +158,7 @@ class GuildConfig:
     def STAFF_SERVER_URL(self):
         return self.ids.get("STAFF_SERVER_URL")
 
-    # ===== IMAGES =====
+    # ===== IMAGES (Properties with defaults) =====
     @property
     def BANNER_URL(self): return self.images.get("BANNER_URL", DEFAULT_IMAGES["BANNER_URL"])
     @property
@@ -139,7 +180,7 @@ class GuildConfig:
     @property
     def FAMILY_ICON_URL(self): return self.images.get("FAMILY_ICON_URL", DEFAULT_IMAGES["FAMILY_ICON_URL"])
 
-    # ===== ROLES =====
+    # ===== ROLES (Returns ID or None) =====
     @property
     def VISITOR_ROLE(self): return self.roles.get("VISITOR_ROLE")
     @property
@@ -164,9 +205,10 @@ class GuildConfig:
     def CHAMPIONS_TESTER_ROLE(self): return self.roles.get("CHAMPIONS_TESTER_ROLE")
 
     def TH_ROLE(self, level: int):
+        """Retrieves the role ID for a specific Town Hall level."""
         return self.roles.get(f"TOWNHALL_ROLES:{level}")
 
-    # ===== CATEGORIES =====
+    # ===== CATEGORIES (Channel IDs) =====
     @property
     def CLAN_TICKETS_CATEGORY(self): return self.categories.get("CLAN_TICKETS_CATEGORY")
     @property
@@ -189,14 +231,22 @@ class GuildConfig:
     def PARTNER_TICKETS_CATEGORY(self): return self.categories.get("PARTNER_TICKETS_CATEGORY")
 
 def get_config(guild_id: int) -> GuildConfig:
+    """Factory function to get a config instance for a guild."""
     return GuildConfig(guild_id)
 
 # --- The Extension / Cog ---
 class Setup(ipy.Extension):
+    """
+    Extension housing the administrative slash commands for bot configuration.
+    """
     def __init__(self, bot):
         self.bot = bot
 
     async def process_setup(self, ctx, category_name, key_map, kwargs):
+        """
+        Generic processor for setup commands.
+        Maps slash command arguments to JSON config keys and saves the data.
+        """
         updates = {}
         response_lines = []
 
@@ -204,6 +254,7 @@ class Setup(ipy.Extension):
             if value is not None and arg_name in key_map:
                 json_key = key_map[arg_name]
                 
+                # Convert Discord objects to their storable IDs/URLs
                 if isinstance(value, (ipy.Role, ipy.BaseChannel)):
                     updates[json_key] = value.id
                     response_lines.append(f"✅ Set **{json_key}** to {value.mention}")
@@ -228,7 +279,7 @@ class Setup(ipy.Extension):
     @ipy.slash_command(
         name="setup_server_roles", 
         description="Configure Server Roles",
-        default_member_permissions=ipy.Permissions.ADMINISTRATOR # <--- SECURED WITH NATIVE PERMS
+        default_member_permissions=ipy.Permissions.ADMINISTRATOR # Secured: Only Admins
     )
     @ipy.slash_option(name="visitor", description="Visitor Role", opt_type=ipy.OptionType.ROLE, required=False)
     @ipy.slash_option(name="family", description="Family Member Role", opt_type=ipy.OptionType.ROLE, required=False)
@@ -250,6 +301,7 @@ class Setup(ipy.Extension):
     @ipy.slash_option(name="th17", description="Town Hall 17 Role", opt_type=ipy.OptionType.ROLE, required=False)
     @ipy.slash_option(name="th18", description="Town Hall 18 Role", opt_type=ipy.OptionType.ROLE, required=False)
     async def setup_roles_cmd(self, ctx: ipy.SlashContext, **kwargs):
+        """Command to update role ID mappings."""
         key_map = {
             "visitor": "VISITOR_ROLE", "family": "FAMILY_ROLE", "fwa_member": "FWA_MEMBER_ROLE",
             "moderator": "MODERATOR_ROLE", "developer": "SERVER_DEVELOPMENT_ROLE", "leader": "LEADER_ROLE",
@@ -267,7 +319,7 @@ class Setup(ipy.Extension):
     @ipy.slash_command(
         name="setup_server_categories", 
         description="Configure server categories",
-        default_member_permissions=ipy.Permissions.ADMINISTRATOR # <--- SECURED WITH NATIVE PERMS
+        default_member_permissions=ipy.Permissions.ADMINISTRATOR # Secured: Only Admins
     )
     @ipy.slash_option(name="clan_tickets", description="Clan Tickets Category", opt_type=ipy.OptionType.CHANNEL, required=False)
     @ipy.slash_option(name="after_cwl", description="After CWL Category", opt_type=ipy.OptionType.CHANNEL, required=False)
@@ -280,6 +332,7 @@ class Setup(ipy.Extension):
     @ipy.slash_option(name="support_tickets", description="Support Tickets Category", opt_type=ipy.OptionType.CHANNEL, required=False)
     @ipy.slash_option(name="partner_tickets", description="Partner Tickets Category", opt_type=ipy.OptionType.CHANNEL, required=False)
     async def setup_categories_cmd(self, ctx: ipy.SlashContext, **kwargs):
+        """Command to update ticket category ID mappings."""
         key_map = {
             "clan_tickets": "CLAN_TICKETS_CATEGORY", "after_cwl": "AFTER_CWL_CATEGORY",
             "staff_apply": "STAFF_APPLY_CATEGORY", "staff_trials": "STAFF_TRIALS_CATEGORY",
@@ -295,11 +348,12 @@ class Setup(ipy.Extension):
     @ipy.slash_command(
         name="setup_server_config", 
         description="Configure miscellaneous server IDs and Links",
-        default_member_permissions=ipy.Permissions.ADMINISTRATOR # <--- SECURED WITH NATIVE PERMS
+        default_member_permissions=ipy.Permissions.ADMINISTRATOR # Secured: Only Admins
     )
     @ipy.slash_option(name="staff_guild_id", description="The ID of the Staff Server", opt_type=ipy.OptionType.STRING, required=False)
     @ipy.slash_option(name="staff_server_url", description="The Invite Link to the Staff Server", opt_type=ipy.OptionType.STRING, required=False)
     async def setup_config_cmd(self, ctx: ipy.SlashContext, **kwargs):
+        """Command to update miscellaneous server IDs."""
         key_map = {
             "staff_guild_id": "STAFF_GUILD_ID",
             "staff_server_url": "STAFF_SERVER_URL"
@@ -312,7 +366,7 @@ class Setup(ipy.Extension):
     @ipy.slash_command(
         name="setup_server_images", 
         description="Configure server images/banners",
-        default_member_permissions=ipy.Permissions.ADMINISTRATOR # <--- SECURED WITH NATIVE PERMS
+        default_member_permissions=ipy.Permissions.ADMINISTRATOR # Secured: Only Admins
     )
     @ipy.slash_option(name="welcome_banner", description="Main Welcome Banner", opt_type=ipy.OptionType.ATTACHMENT, required=False)
     @ipy.slash_option(name="clan_banner", description="Clan Application Banner", opt_type=ipy.OptionType.ATTACHMENT, required=False)
@@ -325,6 +379,7 @@ class Setup(ipy.Extension):
     @ipy.slash_option(name="line_separator", description="Line Separator GIF", opt_type=ipy.OptionType.ATTACHMENT, required=False)
     @ipy.slash_option(name="family_icon", description="Family Icon URL (Upload Image)", opt_type=ipy.OptionType.ATTACHMENT, required=False)
     async def setup_images_cmd(self, ctx: ipy.SlashContext, **kwargs):
+        """Command to update image URLs used in embeds."""
         key_map = {
             "welcome_banner": "BANNER_URL",
             "clan_banner": "CLAN_BANNER_URL",
@@ -340,4 +395,5 @@ class Setup(ipy.Extension):
         await self.process_setup(ctx, "images", key_map, kwargs)
 
 def setup(bot):
+    """Entry point for loading the extension."""
     Setup(bot)
